@@ -19,7 +19,7 @@ describe("MerchToken", function () {
     const symbol = await this.merch.symbol()
     const decimals = await this.merch.decimals()
     expect(name, "MerchToken")
-    expect(symbol, "MCH")
+    expect(symbol, "MRCH")
     expect(decimals, "18")
   })
 
