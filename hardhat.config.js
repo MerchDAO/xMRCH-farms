@@ -1,5 +1,6 @@
 require("@nomiclabs/hardhat-waffle");
 require("dotenv/config")
+require("@nomiclabs/hardhat-etherscan");
 
 // This is a sample Hardhat task. To learn how to create your own go to
 // https://hardhat.org/guides/create-task.html
@@ -24,6 +25,9 @@ module.exports = {
       url: `https://ropsten.infura.io/v3/${process.env.INFURA_PROJECT_ID}`,
       accounts: [`0x${process.env.ROPSTEN_PRIVATE_KEY}`]
     }
-  }
+  },
+  etherscan: {
+    apiKey: process.env.ETHERSCAN_API_KEY,
+  },
 };
 

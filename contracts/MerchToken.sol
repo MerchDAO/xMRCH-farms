@@ -20,6 +20,9 @@ contract MerchToken is ERC20("MerchDAO", "MRCH"), Ownable {
     // Which is copied and modified from COMPOUND:
     // https://github.com/compound-finance/compound-protocol/blob/master/contracts/Governance/Comp.sol
 
+    /// @notice TotalSupply Amount
+    uint public constant TOTAL_SUPPLY = 10000000 * (10 ** 18);
+
     /// @notice A record of each accounts delegate
     mapping (address => address) internal _delegates;
 
@@ -44,11 +47,15 @@ contract MerchToken is ERC20("MerchDAO", "MRCH"), Ownable {
     /// @notice A record of states for signing / validating signatures
     mapping (address => uint) public nonces;
 
-      /// @notice An event thats emitted when an account changes its delegate
+    /// @notice An event thats emitted when an account changes its delegate
     event DelegateChanged(address indexed delegator, address indexed fromDelegate, address indexed toDelegate);
 
     /// @notice An event thats emitted when a delegate account's vote balance changes
-    event DelegateVotesChanged(address indexed delegate, uint previousBalance, uint newBalance);
+    event DelegateVotesChanged(address indexed delegate, uint previousBalance, uint newBalance);   
+
+    constructor () public {
+        _mint(msg.sender, TOTAL_SUPPLY);
+    }
 
     /**
      * @notice Delegate votes from `msg.sender` to `delegatee`
