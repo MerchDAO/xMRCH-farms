@@ -18,6 +18,7 @@ contract MerchStaking is Ownable {
 
     struct Stake {
         uint amount;
+        uint startTime; 
         uint equivalentAmount;
         uint rewardOut;
     }
@@ -25,10 +26,13 @@ contract MerchStaking is Ownable {
     // Info of each pool.
     struct Pool {
         uint stakingCap; // Pool staking tokens limit
-        uint rewardAPY; // scaledBy 1e18
+        uint rewardCap; // Pool reward tokens limit
+        uint rewardAPY; // scaled by 1e12
         uint startTime; 
         uint endTime; 
         uint stakedTotal; 
+        uint tokenRate; // 1LP/MRCH scaled by 1e12
+        bool bTimeLocked;
     }
     Pool[] public pools;
 
@@ -42,8 +46,8 @@ contract MerchStaking is Ownable {
 
     address public admin;
 
-    event Staked(address staker, uint amount, uint equivalent);
-    event RewardOut(address staker, address token, uint amount);
+    event Staked(uint pid, address staker, uint amount);
+    event RewardOut(uint pid, address staker, address token, uint amount);
 
     constructor(
         address _stakeToken,
@@ -58,38 +62,25 @@ contract MerchStaking is Ownable {
         rewardToken = _rewardToken;
     }
     
-    function addPool(uint _stakingCap, uint _rewardAPY, uint _startTime, uint _endTime) public onlyOwner {
+    function addPool(uint _rewardCap, uint _rewardAPY, uint _startTime, uint _endTime,  uint _tokenRate, bool _bTimeLocked) public onlyOwner {
+        require(getTimeStamp() <= _startTime, "MerchStaking: bad timing for the request");
+        require(_startTime <= _endTime, "MerchStaking: endTime >= startTime");
+        
+        uint equivalentStakeCap = calcStakeTokenEquivalent(_rewardCap, _tokenRate);
+
         pools.push(
             Pool({
-            stakingCap: _stakingCap,
+            rewardCap: _rewardCap,
+            stakingCap: equivalentStakeCap,
             rewardAPY: _rewardAPY,
             startTime: _startTime,
             endTime: _endTime,
+            bTimeLocked: _bTimeLocked,
+            tokenRate: _tokenRate,
             stakedTotal: 0
             })
         );
     }
-    // function addReward(uint rewardAmount) public returns (bool) {
-    //     require(rewardAmount > 0, "MerchStaking: reward must be positive");
-
-    //     transferIn(msg.sender, rewardToken, rewardAmount);
-
-    //     allReward = allReward.add(rewardAmount);
-
-    //     return true;
-    // }
-
-    // function removeUnusedReward() public returns (bool) {
-    //     require(getTimeStamp() > stakingEnd, "MerchStaking: bad timing for the request");
-    //     require(msg.sender == admin, "MerchStaking: Only admin can remove unused reward");
-
-    //     uint unusedReward = allReward.sub(calcReward(stakedTotal));
-    //     allReward = allReward.sub(unusedReward);
-
-    //     transferOut(rewardToken, admin, unusedReward);
-
-    //     return true;
-    // }
 
     function stake(uint _pid, uint _amount) public returns (bool) {
         require(_amount > 0, "MerchStaking: must be positive");
@@ -97,45 +88,39 @@ contract MerchStaking is Ownable {
         require(getTimeStamp() < pools[_pid].endTime, "MerchStaking: bad timing for the request");
 
         address staker = msg.sender;
-        uint equivalent = calcRewardTokenEquivalent(_amount);
 
-        if (equivalent > (pools[_pid].stakingCap.sub(pools[_pid].stakedTotal))) {
-            uint newEquivalent = pools[_pid].stakingCap.sub(pools[_pid].stakedTotal);
-            uint coefficient = newEquivalent.mul(1e18).div(equivalent);
-            equivalent = newEquivalent;
-            _amount = _amount.mul(coefficient).div(1e18);
-        }
-
-        require(equivalent > 0, "MerchStaking: Staking cap is filled");
-        require(equivalent.add(pools[_pid].stakedTotal) <= pools[_pid].stakingCap, "MerchStaking: this will increase staking amount pass the cap");
-
+        require(pools[_pid].stakedTotal.add(_amount) <= pools[_pid].stakingCap, "MerchStaking: Staking cap is filled");
+    
         transferIn(staker, stakeToken, _amount);
 
-        emit Staked(_pid, staker, _amount, equivalent);
+        emit Staked(_pid, staker, _amount);
 
         // Transfer is completed
-        pools[_pid].stakedTotal = pools[_pid].stakedTotal.add(equivalent);
+        pools[_pid].stakedTotal = pools[_pid].stakedTotal.add(_amount);
         stakes[_pid][staker].amount = stakes[_pid][staker].amount.add(_amount);
-        stakes[_pid][staker].equivalentAmount = stakes[_pid][staker].equivalentAmount.add(equivalent);
+        stakes[_pid][staker].equivalentAmount = calcRewardTokenEquivalent(_amount, pools[_pid].tokenRate);
+        stakes[_pid][staker].startTime = getTimeStamp();
+        stakes[_pid][staker].rewardOut = 0;
 
         return true;
     }
 
     function withdraw(uint _pid) public returns (bool) {
-        require(claimReward(), "MerchStaking: claim error");
+        require(pools[_pid].bTimeLocked == false, "MerchStaking: time lock pool");
+        require(getTimeStamp() > pools[_pid].endTime || pools[_pid].bTimeLocked == false, "MerchStaking: time lock pool");
+        require(claim(_pid), "MerchStaking: claim error");
         uint amount = stakes[_pid][msg.sender].amount;
 
-        return withdrawWithoutReward(amount);
+        return withdrawWithoutReward(_pid, amount);
     }
 
-    function withdrawWithoutReward(uint _amount) public returns (bool) {
-        return withdrawInternal(msg.sender, _amount);
+    function withdrawWithoutReward(uint _pid, uint _amount) public returns (bool) {
+        return withdrawInternal(_pid, msg.sender, _amount);
     }
 
     function withdrawInternal(uint _pid, address _staker, uint _amount) internal returns (bool) {
-        // require(getTimeStamp() >= withdrawStart, "MerchStaking: bad timing for the request");
-        require(amount > 0, "MerchStaking: must be positive");
-        require(amount <= stakes[_pid][msg.sender].amount, "MerchStaking: not enough balance");
+        require(_amount > 0, "MerchStaking: must be positive");
+        require(_amount <= stakes[_pid][msg.sender].amount, "MerchStaking: not enough balance");
 
         stakes[_pid][_staker].amount = stakes[_pid][_staker].amount.sub(_amount);
 
@@ -144,11 +129,10 @@ contract MerchStaking is Ownable {
         return true;
     }
 
-    function claimReward(uint _pid) public returns (bool) {
+    function claim(uint _pid) public returns (bool) {
         require(getTimeStamp() > pools[_pid].endTime, "MerchStaking: bad timing for the request");
-
         address staker = msg.sender;
-
+        
         uint rewardAmount = currentReward(_pid, staker);
 
         if (rewardAmount == 0) {
@@ -159,59 +143,31 @@ contract MerchStaking is Ownable {
 
         stakes[_pid][staker].rewardOut = stakes[_pid][staker].rewardOut.add(rewardAmount);
 
-        emit RewardOut(staker, rewardToken, rewardAmount);
+        emit RewardOut(_pid, staker, rewardToken, rewardAmount);
 
         return true;
     }
 
-    function calcTotalReward(address _staker) public view returns (uint) {
-        uint amount = stakes[_pid][_staker].equivalentAmount;
+    function currentReward(uint _pid, address _staker) public view returns (uint) {
+        uint totalRewardAmount = stakes[_pid][_staker].equivalentAmount.mul(pools[_pid].rewardAPY).div(1e12).div(100);
+        uint totalDuration = getTimeStamp() - stakes[_pid][_staker].startTime;
+        uint duration = getTimeStamp() - stakes[_pid][_staker].startTime;
 
-        return calcReward(amount);
+        uint rewardAmount = totalRewardAmount.mul(duration).div(totalDuration);
+        
+        return rewardAmount.sub(stakes[_pid][_staker].rewardOut);
     }
 
-    function calcReward(uint _amount) public view returns (uint) {
-        // uint duration = withdrawStart.sub(stakingEnd);
-
-        // .div(15) - 1 eth block is mine every ~15 sec, rewardRatePerBlock scaled by 1e18, and 100 is %
-        // uint rewardAmount = amount.mul(rewardRatePerBlock).mul(duration).div(15).div(1e18).div(100);
-        return rewardAmount;
-    }
-
-    function currentReward(address staker) public view returns (uint) {
-        // uint totalStakerReward = calcTotalReward(staker);
-        // uint timeStamp = getTimeStamp();
-
-        // if (totalStakerReward == 0 || timeStamp < stakingEnd) {
-        //     return 0;
-        // }
-
-        // uint allTime = withdrawStart.sub(stakingEnd);
-
-        // uint time = timeStamp < withdrawStart ? timeStamp.sub(stakingEnd) : allTime;
-
-        // uint stakerRewardToTimestamp = totalStakerReward.mul(time).div(allTime); // 1 eth block is mine every ~15 sec
-        // uint rewardOut = stakes[staker].rewardOut;
-
-        // return stakerRewardToTimestamp.sub(rewardOut);
-    }
-
-    function calcRewardTokenEquivalent(uint _amount) public view returns (uint) {
+    function calcStakeTokenEquivalent(uint _amount, uint _tokenRate) public view returns (uint) {
         uint decimalsRewardToken = ERC20(rewardToken).decimals();
         uint decimalsStakeToken = ERC20(stakeToken).decimals();
-        uint factor;
+        return _amount.mul(decimalsRewardToken).mul(1e12).div(_tokenRate).div(decimalsStakeToken);
+    }
 
-        if (decimalsStakeToken >= decimalsRewardToken) {
-            factor = 10**(decimalsStakeToken - decimalsRewardToken);
-        } else {
-            factor = 10**(decimalsRewardToken - decimalsStakeToken);
-        }
-
-        address _token0 = IUniswapV2Pair(stakeToken).token0();
-        address _token1 = IUniswapV2Pair(stakeToken).token1();
-
-        uint balance = rewardToken == _token0 ? (IERC20(_token0).balanceOf(stakeToken)) : (IERC20(_token1).balanceOf(stakeToken));
-        return _amount.mul(factor).mul(2).mul(balance).div(IERC20(stakeToken).totalSupply());
+    function calcRewardTokenEquivalent(uint _amount, uint _tokenRate /* 1LP/MRCH */) public view returns (uint) {
+        uint decimalsStakeToken = ERC20(stakeToken).decimals();
+        uint decimalsRewardToken = ERC20(rewardToken).decimals();
+        return _amount.mul(decimalsStakeToken).mul(_tokenRate).div(1e12).div(decimalsRewardToken);
     }
 
     function transferOut(address _token, address _to, uint _amount) internal {
