@@ -63,7 +63,7 @@ contract MerchStaking is Ownable {
     }
     
     function addPool(uint _rewardCap, uint _rewardAPY, uint _startTime, uint _endTime,  uint _tokenRate, bool _bTimeLocked) public onlyOwner {
-        require(getTimeStamp() <= _startTime, "MerchStaking: bad timing for the request");
+        // require(getTimeStamp() <= _startTime, "MerchStaking: bad timing for the request");
         require(_startTime <= _endTime, "MerchStaking: endTime >= startTime");
         
         uint equivalentStakeCap = calcStakeTokenEquivalent(_rewardCap, _tokenRate);

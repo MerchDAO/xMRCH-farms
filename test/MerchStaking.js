@@ -44,5 +44,18 @@ describe("MerchStaking contract", function () {
   });
 
   describe("MerchStaking", function () {
+    it("Should stake token to the pool", async function () {
+        await rewardToken.transfer(owner.address, 100000000);
+        const currentTimeStamp = Math.floor(Date.now() / 1000);
+        const startTime = currentTimeStamp;
+        const endTime = startTime + 30 * 24 * 60 * 60; 
+        await merchStaking.addPool(100000000, 5*10**12, startTime, endTime, 10*10**12, false);
+
+        await stakeToken.transfer(addr1.address, "10000");
+        await stakeToken.connect(addr1).approve(merchStaking.address, "10000", { from: addr1.address });
+        await merchStaking.connect(addr1).stake(0, 1000);
+        expect(await stakeToken.balanceOf(addr1.address)).to.equal(9000);
+        expect((await merchStaking.stakes(0, addr1.address)).equivalentAmount).to.equal(10000);
+    });
   });
 });
