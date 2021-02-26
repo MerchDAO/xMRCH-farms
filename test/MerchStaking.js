@@ -45,7 +45,8 @@ describe("MerchStaking contract", function () {
 
   describe("MerchStaking", function () {
     it("Should stake token to the pool", async function () {
-        await rewardToken.transfer(owner.address, 100000000);
+        await rewardToken.transfer(merchStaking.address, 100000000);
+        expect(await rewardToken.balanceOf(merchStaking.address)).to.equal(100000000);
         const currentTimeStamp = Math.floor(Date.now() / 1000);
         const startTime = currentTimeStamp;
         const endTime = startTime + 30 * 24 * 60 * 60; 
@@ -59,3 +60,6 @@ describe("MerchStaking contract", function () {
     });
   });
 });
+
+
+
