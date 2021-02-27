@@ -7,11 +7,6 @@ import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "hardhat/console.sol";
 
-interface IUniswapV2Pair {
-    function token0() external view returns (address);
-    function token1() external view returns (address);
-}
-
 contract MerchStaking is Ownable {
     using SafeMath for uint;
     using SafeERC20 for IERC20;
@@ -41,9 +36,6 @@ contract MerchStaking is Ownable {
     address public stakeToken; // Uniswap LP token from pool MRCH/USDT
     address public rewardToken; // MRCH token
 
-    uint public constant blocksPerYear = 2102400;
-    uint public rewardRatePerBlock;
-
     address public admin;
 
     event Staked(uint pid, address staker, uint amount);
@@ -64,7 +56,7 @@ contract MerchStaking is Ownable {
     
     function addPool(uint _rewardCap, uint _rewardAPY, uint _startTime, uint _endTime,  uint _tokenRate, bool _bTimeLocked) public onlyOwner {
         // require(getTimeStamp() <= _startTime, "MerchStaking: bad timing for the request");
-        require(_startTime <= _endTime, "MerchStaking: endTime >= startTime");
+        require(_startTime < _endTime, "MerchStaking: endTime > startTime");
         
         uint equivalentStakeCap = calcStakeTokenEquivalent(_rewardCap, _tokenRate);
 
@@ -150,7 +142,7 @@ contract MerchStaking is Ownable {
 
     function currentReward(uint _pid, address _staker) public view returns (uint) {
         uint totalRewardAmount = stakes[_pid][_staker].equivalentAmount.mul(pools[_pid].rewardAPY).div(1e12).div(100);
-        uint totalDuration = getTimeStamp() - stakes[_pid][_staker].startTime;
+        uint totalDuration = stakes[_pid][_staker].endTime - stakes[_pid][_staker].startTime;
         uint duration = getTimeStamp() - stakes[_pid][_staker].startTime;
 
         uint rewardAmount = totalRewardAmount.mul(duration).div(totalDuration);
