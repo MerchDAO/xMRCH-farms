@@ -1,5 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { time } = require("./utilities")
+
 const {
   isCallTrace,
 } = require("hardhat/internal/hardhat-network/stack-traces/message-trace");
@@ -57,6 +59,16 @@ describe("MerchStaking contract", function () {
         await merchStaking.connect(addr1).stake(0, 1000);
         expect(await stakeToken.balanceOf(addr1.address)).to.equal(9000);
         expect((await merchStaking.stakes(0, addr1.address)).equivalentAmount).to.equal(10000);
+        await time.advanceBlockTo("7000");
+        await merchStaking.connect(addr1).claim(0);
+        expect(await rewardToken.balanceOf(addr1.address)).to.equal(1);
+        await time.advanceBlockTo("14000");
+        await merchStaking.connect(addr1).claim(0);
+        expect(await rewardToken.balanceOf(addr1.address)).to.equal(2);
+        await merchStaking.connect(addr1).withdraw(0);
+        expect(await rewardToken.balanceOf(addr1.address)).to.equal(2);
+        expect(await stakeToken.balanceOf(addr1.address)).to.equal(10000);
+
     });
   });
 });
