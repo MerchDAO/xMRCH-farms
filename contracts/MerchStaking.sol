@@ -122,7 +122,7 @@ contract MerchStaking is Ownable {
     }
 
     function claim(uint _pid) public returns (bool) {
-        require(getTimeStamp() > pools[_pid].endTime, "MerchStaking: bad timing for the request");
+        require(pools[_pid].bTimeLocked == false || getTimeStamp() > pools[_pid].endTime, "MerchStaking: bad timing for the request");
         address staker = msg.sender;
         
         uint rewardAmount = currentReward(_pid, staker);
@@ -142,7 +142,7 @@ contract MerchStaking is Ownable {
 
     function currentReward(uint _pid, address _staker) public view returns (uint) {
         uint totalRewardAmount = stakes[_pid][_staker].equivalentAmount.mul(pools[_pid].rewardAPY).div(1e12).div(100);
-        uint totalDuration = stakes[_pid][_staker].endTime - stakes[_pid][_staker].startTime;
+        uint totalDuration = pools[_pid].endTime - stakes[_pid][_staker].startTime;
         uint duration = getTimeStamp() - stakes[_pid][_staker].startTime;
 
         uint rewardAmount = totalRewardAmount.mul(duration).div(totalDuration);
