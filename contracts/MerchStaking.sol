@@ -143,8 +143,8 @@ contract MerchStaking is Ownable {
     function currentReward(uint _pid, address _staker) public view returns (uint) {
         uint totalRewardAmount = stakes[_pid][_staker].equivalentAmount.mul(pools[_pid].rewardAPY).div(1e12).div(100);
         uint totalDuration = pools[_pid].endTime - stakes[_pid][_staker].startTime;
-        uint duration = getTimeStamp() - stakes[_pid][_staker].startTime;
-
+        uint duration = (getTimeStamp() > pools[_pid].endTime ? pools[_pid].endTime : getTimeStamp()) - stakes[_pid][_staker].startTime;
+        
         uint rewardAmount = totalRewardAmount.mul(duration).div(totalDuration);
         
         return rewardAmount.sub(stakes[_pid][_staker].rewardOut);
