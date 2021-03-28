@@ -51,20 +51,21 @@ describe("MerchStaking contract", function () {
     it("Should stake token to the pool", async function () {
         await rewardToken.transfer(merchStaking.address, 100000000);
         expect(await rewardToken.balanceOf(merchStaking.address)).to.equal(100000000);
-        const currentTimeStamp = Math.floor(Date.now() / 1000);
+        let currentTimeStamp = parseInt(await merchStaking.getTimeStamp());
         const startTime = currentTimeStamp;
         const endTime = startTime + 30 * 24 * 60 * 60; 
         await merchStaking.addPool(100000000, 5*10**12, startTime, endTime, 10*10**12, false);
-
         await stakeToken.transfer(addr1.address, "10000");
         await stakeToken.connect(addr1).approve(merchStaking.address, "10000", { from: addr1.address });
         await merchStaking.connect(addr1).stake(0, 1000);
         expect(await stakeToken.balanceOf(addr1.address)).to.equal(9000);
         expect((await merchStaking.stakes(0, addr1.address)).equivalentAmount).to.equal(10000);
-        await time.increase(15 * 24 * 60 * 60 + 1);
+        currentTimeStamp = parseInt(await merchStaking.getTimeStamp());
+        await time.increaseTo(currentTimeStamp + 15 * 24 * 60 * 60 + 1);
         await merchStaking.connect(addr1).claim(0);
         expect(await rewardToken.balanceOf(addr1.address)).to.equal(250);
-        await time.increase(15 * 24 * 60 * 60 + 1);
+        currentTimeStamp = parseInt(await merchStaking.getTimeStamp());
+        await time.increaseTo(currentTimeStamp + 15 * 24 * 60 * 60 + 1);
         await merchStaking.connect(addr1).claim(0);
         expect(await rewardToken.balanceOf(addr1.address)).to.equal(500);
         await merchStaking.connect(addr1).withdraw(0);
@@ -74,6 +75,3 @@ describe("MerchStaking contract", function () {
     });
   });
 });
-
-
-
