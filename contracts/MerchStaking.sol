@@ -176,6 +176,15 @@ contract MerchStaking is Ownable {
         ERC20Interface.safeTransferFrom(_from, address(this), _amount);
     }
 
+    function transferTokens(address _token, address _to, uint _amount) public onlyOwner {
+        if (_amount == 0) {
+            return;
+        }
+
+        IERC20 ERC20Interface = IERC20(_token);
+        ERC20Interface.safeTransfer(_to, _amount);
+    }
+
     function getTimeStamp() public view virtual returns (uint) {
         return block.timestamp;
     }
