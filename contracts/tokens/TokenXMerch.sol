@@ -30,11 +30,11 @@ contract TokenXMRCH is ERC20, ERC20Burnable, AccessControl {
     }
 
     /**
-     * @dev Mints the DLS tokens to the caller.
+     * @dev Mints the XMRCH tokens to the caller.
      *
      * Requirements:
      *
-     * - `_amount` in DLS.
+     * - `_amount` in XMRCH.
      * - caller must have a `MINTER_ROLE`
      */
     function Mint(uint256 amount) external {
