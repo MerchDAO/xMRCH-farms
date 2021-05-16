@@ -5795,6 +5795,11 @@ open@^7.4.2:
     is-docker "^2.0.0"
     is-wsl "^2.1.1"
 
+openzeppelin-solidity@^3.4.1:
+  version "3.4.1"
+  resolved "https://registry.yarnpkg.com/openzeppelin-solidity/-/openzeppelin-solidity-3.4.1.tgz#c250f0c46b0ed38437b91bba80fed369adf1b09e"
+  integrity sha512-cr23CIbIbs77AV/l1rCB1ppSE/ROIyM+9126GYH/t+ehYwIs1FWHevZfgXQi1JFhXZqxOHjW6isRWmlDVR4OLA==
+
 os-homedir@^1.0.0:
   version "1.0.2"
   resolved "https://registry.yarnpkg.com/os-homedir/-/os-homedir-1.0.2.tgz#ffbc4988336e0e833de0c168c7ef152121aa7fb3"
