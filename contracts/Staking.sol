@@ -3,6 +3,7 @@ pragma solidity 0.7.6;
 
 import "./tokens/TokenMRCH.sol";
 import "./tokens/TokenXMRCH.sol";
+import "./tokens/IUniswapV2Pair.sol";
 import "openzeppelin-solidity/contracts/access/AccessControl.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
@@ -26,9 +27,9 @@ contract Staking is AccessControl, ReentrancyGuard {
 
     mapping(address => Stake) public stakes;
 
-    // ERC20 LPMERCH token staking to the contract
+    // ERC20 LP MRCH token staking to the contract
     // and XMRCH token earned by stakers as reward.
-    TokenLPMERCH public stakeToken;
+    IUniswapV2Pair public stakeToken;
     TokenXMRCH public rewardToken;
 
     uint256 public tokensPerStake;
@@ -100,22 +101,22 @@ contract Staking is AccessControl, ReentrancyGuard {
     }
 
     /**
-     * @dev Initializes the DLD and DLS tokens
+     * @dev Initializes the LP MRCH and XMRCH tokens
      *
      * Requirements:
      *
-     * - `_TokenDLD` address of DLD token.
-     * - `_TokenDLS` address of DLS token.
+     * - `_IUniswapV2Pair` address of LP MRCH token.
+     * - `_TokenXMRCH` address of DLS token.
      */
-    function initialize(address _TokenDLD, address _TokenDLS) external {
+    function initialize(address _IUniswapV2Pair, address _TokenXMRCH) external {
         require(hasRole(ADMIN_ROLE, msg.sender), "Caller is not an admin");
         require(
             address(stakeToken) == address(0) &&
                 address(rewardToken) == address(0),
             "Staking: contract already initialized"
         );
-        stakeToken = TokenDLD(_TokenDLD);
-        rewardToken = TokenDLS(_TokenDLS);
+        stakeToken = IUniswapV2Pair(_IUniswapV2Pair);
+        rewardToken = TokenXMRCH(_TokenXMRCH);
     }
 
     /**
@@ -206,11 +207,11 @@ contract Staking is AccessControl, ReentrancyGuard {
     }
 
     /**
-     * @dev Stakes the DLD tokens
+     * @dev Stakes the LP MRCH tokens
      *
      * Requirements:
      *
-     * - `_amount` in DLD.
+     * - `_amount` in LP MRCH.
      */
     function stake(uint256 _amount) external returns (bool) {
         require(
@@ -248,11 +249,11 @@ contract Staking is AccessControl, ReentrancyGuard {
     }
 
     /**
-     * @dev Unstakes the staked DLD tokens
+     * @dev Unstakes the staked  LP MRCH tokens
      *
      * Requirements:
      *
-     * - `_amount` in DLD.
+     * - `_amount` in LP MRCH.
      */
     function unstake(uint256 _amount)
         public
@@ -299,7 +300,7 @@ contract Staking is AccessControl, ReentrancyGuard {
     }
 
     /**
-     * @dev Calculates available reward DLS tokens
+     * @dev Calculates available reward TokenXMRCH tokens
      *
      */
     function calcReward(
@@ -322,7 +323,7 @@ contract Staking is AccessControl, ReentrancyGuard {
     }
 
     /**
-     * @dev Claimes reward DLS tokens
+     * @dev Claimes reward TokenXMRCH tokens
      *
      */
     function claim() public nonReentrant {
@@ -341,7 +342,7 @@ contract Staking is AccessControl, ReentrancyGuard {
     }
 
     /**
-     * @dev Shows amount of the reward DLS
+     * @dev Shows amount of the reward TokenXMRCH
      *
      */
     function getClaim(address _staker) public view returns (uint256 reward) {
