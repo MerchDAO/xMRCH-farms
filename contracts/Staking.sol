@@ -3,7 +3,6 @@ pragma solidity 0.7.6;
 
 import "./tokens/TokenMRCH.sol";
 import "./tokens/TokenXMRCH.sol";
-import "./tokens/IUniswapV2Pair.sol";
 import "openzeppelin-solidity/contracts/access/AccessControl.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
@@ -29,7 +28,7 @@ contract Staking is AccessControl, ReentrancyGuard {
 
     // ERC20 LP MRCH token staking to the contract
     // and XMRCH token earned by stakers as reward.
-    IUniswapV2Pair public stakeToken;
+    ERC20 public stakeToken;
     TokenXMRCH public rewardToken;
 
     uint256 public tokensPerStake;
@@ -115,7 +114,7 @@ contract Staking is AccessControl, ReentrancyGuard {
                 address(rewardToken) == address(0),
             "Staking: contract already initialized"
         );
-        stakeToken = IUniswapV2Pair(_IUniswapV2Pair);
+        stakeToken = ERC20(_IUniswapV2Pair);
         rewardToken = TokenXMRCH(_TokenXMRCH);
     }
 
