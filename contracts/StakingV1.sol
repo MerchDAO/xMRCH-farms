@@ -101,11 +101,8 @@ contract StakingV1 is AccessControl, ReentrancyGuard {
 
     /**
      * @dev Initializes the LP MRCH and XMRCH tokens
-     *
-     * Requirements:
-     *
-     * - `_IUniswapV2Pair` address of LP MRCH token.
-     * - `_TokenXMRCH` address of XMRCH token.
+     * @param _IUniswapV2Pair The address of LP MRCH token.
+     * @param _TokenXMRCH` The address of XMRCH token.
      */
     function initialize(address _IUniswapV2Pair, address _TokenXMRCH) external {
         require(hasRole(ADMIN_ROLE, msg.sender), "Caller is not an admin");
@@ -114,14 +111,14 @@ contract StakingV1 is AccessControl, ReentrancyGuard {
             && address(rewardToken) == address(0),
             "Staking: contract already initialized"
         );
+
         stakeToken = ERC20(_IUniswapV2Pair);
         rewardToken = TokenXMRCH(_TokenXMRCH);
     }
 
     /**
-     * @dev Runs new epoch every 7 days and executes the halving
-     *      of Reward amount every 91 day
-     *
+     * @dev Runs new epoch every 7 days and executes the halving of Reward amount every 91 day
+     * @param _tokensPerStake The tokens per stake amount
      */
     function newEpoch(uint256 _tokensPerStake) private {
         epochTPS = _tokensPerStake;
@@ -137,7 +134,6 @@ contract StakingV1 is AccessControl, ReentrancyGuard {
 
     /**
      * @dev Calculates the produced amount of reward tokens
-     *
      */
     function produced() public view returns (uint256) {
         return
@@ -150,7 +146,6 @@ contract StakingV1 is AccessControl, ReentrancyGuard {
 
     /**
      * @dev Calculates and updates `tokensPerStake`
-     *
      */
     function update() public {
         uint256 producedAtNow = produced();
@@ -181,36 +176,32 @@ contract StakingV1 is AccessControl, ReentrancyGuard {
         return address(stakeToken);
     }
 
+    /**
+     * @dev getDecimals - return decimals for the staking and reward tokens
+     */
     function getDecimals() external view returns (uint256, uint256) {
         return (ERC20(stakeToken).decimals(), ERC20(rewardToken).decimals());
     }
 
     /**
      * @dev `getUserInfoByAddress` - show information about `_user`
+     * @param _user The user address
+     * @return (staked, available, claimed) The staked LP MRCH amount, available claim amount and claimed amount
      */
-    function getUserInfoByAddress(address _user)
-        external
-        view
-        returns (
-            uint256 staked_,
-            uint256 available_,
-            uint256 claimed_
-        )
-    {
+    function getUserInfoByAddress(address _user) external view returns (uint256, uint256, uint256) {
         Stake storage staker = stakes[_user];
-        staked_ = staker.amount;
-        available_ = getClaim(_user);
-        claimed_ = staker.distributed;
+
+        uint staked_ = staker.amount;
+        uint available_ = getClaim(_user);
+        uint claimed_ = staker.distributed;
 
         return (staked_, available_, claimed_);
     }
 
     /**
      * @dev Stakes the LP MRCH tokens
-     *
-     * Requirements:
-     *
-     * - `_amount` in LP MRCH.
+     * @param _amount The LP MRCH amount
+     * @return The result (true or false)
      */
     function stake(uint256 _amount) external returns (bool) {
         require(
@@ -251,17 +242,10 @@ contract StakingV1 is AccessControl, ReentrancyGuard {
 
     /**
      * @dev Unstakes the staked LP MRCH tokens
-     *
-     * Requirements:
-     *
-     * - `_amount` in LP MRCH.
+     * @param _amount The unstake amount
+     * @return The result (true or false)
      */
-    function unstake(uint256 _amount)
-        public
-        payable
-        nonReentrant
-        returns (bool)
-    {
+    function unstake(uint256 _amount) public payable nonReentrant returns (bool) {
         Stake storage staker = stakes[msg.sender];
         require(
             staker.amount >= _amount,
@@ -303,13 +287,14 @@ contract StakingV1 is AccessControl, ReentrancyGuard {
 
     /**
      * @dev Calculates available reward TokenXMRCH tokens
-     *
+     * @param _staker The staker address
+     * @param _tps The tokens per stake amount
+     * @param _epochRound The epoch round num
+     * @return reward
      */
-    function calcReward(
-        address _staker,
-        uint256 _tps,
-        uint256 _epochRound
-    ) private view returns (uint256 reward) {
+    function calcReward(address _staker, uint256 _tps, uint256 _epochRound) private view returns (uint256) {
+        uint reward;
+
         Stake storage staker = stakes[_staker];
 
         if (_epochRound == 0) return 0;
@@ -321,12 +306,12 @@ contract StakingV1 is AccessControl, ReentrancyGuard {
             .add(staker.rewardAllowed)
             .sub(staker.rewardDebt)
             .sub(staker.distributed);
+
         return reward;
     }
 
     /**
      * @dev Claims reward TokenXMRCH tokens
-     *
      */
     function claim() public nonReentrant {
         update();
@@ -346,9 +331,12 @@ contract StakingV1 is AccessControl, ReentrancyGuard {
 
     /**
      * @dev Shows amount of the reward TokenXMRCH
-     *
+     * @param _staker The staker address
+     * @return reward
      */
-    function getClaim(address _staker) public view returns (uint256 reward) {
+    function getClaim(address _staker) public view returns (uint256) {
+        uint reward;
+
         uint256 _tps = tokensPerStake;
         uint256 _epochRound = epochRound;
         uint256 _epochTPS = epochTPS;
