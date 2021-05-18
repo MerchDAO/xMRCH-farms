@@ -120,7 +120,7 @@ contract Staking is AccessControl, ReentrancyGuard {
 
     /**
      * @dev Runs new epoch every 7 days and executes the halving
-     *      of Rewart amount every 91 day
+     *      of Reward amount every 91 day
      *
      */
     function newEpoch(uint256 _tokensPerStake) private {
@@ -186,7 +186,7 @@ contract Staking is AccessControl, ReentrancyGuard {
     }
 
     /**
-     * @dev `getUserInfobyAddress` - show information about `_user`
+     * @dev `getUserInfoByAddress` - show information about `_user`
      */
     function getUserInfoByAddress(address _user)
         external
@@ -243,12 +243,14 @@ contract Staking is AccessControl, ReentrancyGuard {
         staker.stakeTime = block.timestamp;
 
         update();
+
         emit tokensStaked(_amount, block.timestamp, msg.sender);
+
         return true;
     }
 
     /**
-     * @dev Unstakes the staked  LP MRCH tokens
+     * @dev Unstakes the staked LP MRCH tokens
      *
      * Requirements:
      *
@@ -295,6 +297,7 @@ contract Staking is AccessControl, ReentrancyGuard {
         stakedTotal = stakedTotal.sub(_amount);
 
         emit tokensUnstaked(unstakeAmount, fineAmount, block.timestamp, msg.sender);
+
         return true;
     }
 
@@ -337,6 +340,7 @@ contract Staking is AccessControl, ReentrancyGuard {
         distributed = distributed.add(reward);
 
         IERC20(rewardToken).safeTransfer(msg.sender, reward);
+
         emit tokensClaimed(reward, block.timestamp, msg.sender);
     }
 
