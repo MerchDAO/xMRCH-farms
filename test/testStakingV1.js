@@ -5,9 +5,9 @@ const { ethers } = require("hardhat");
 const { providers } = require("web3");
 
 
-describe("DAOLand Staking test", async () => {
-    let tokendls;
-    let tokendld;
+describe("MRCH Staking test", async () => {
+    let tokenmrch;
+    let tokenxmrch;
     let staking;
     let startTime = Math.floor(Date.now() / 1000);
     let distriburionTime = 1000;
@@ -17,7 +17,7 @@ describe("DAOLand Staking test", async () => {
     let finePrecision = 1000000;
 
     it("STEP 1. Creating Staking contract", async function () {
-        const Staking = await hre.ethers.getContractFactory("Staking");
+        const Staking = await hre.ethers.getContractFactory("StakingV1");
         staking = await Staking.deploy(
             ethers.utils.parseEther("100.0"), //process.env.REWARDTOTAL,
             startTime,//process.env.STAKINGSTART,
@@ -29,30 +29,30 @@ describe("DAOLand Staking test", async () => {
         );
     });
 
-    it("STEP 2. Creating DLD token contract", async function () {
-        const TokenDLD = await hre.ethers.getContractFactory("TokenDLD");
-        tokendld = await TokenDLD.deploy(
-            process.env.DLD_INITIALSUPPLY,
-            process.env.DLD_NAME,
-            process.env.DLD_SYMBOL
+    it("STEP 2. Creating MRCH token contract", async function () {
+        const TokenMRCH = await hre.ethers.getContractFactory("TokenMRCH");
+        tokenmrch = await TokenMRCH.deploy(
+            process.env.MRCH_INITIALSUPPLY,
+            process.env.MRCH_NAME,
+            process.env.MRCH_SYMBOL
         );
     });
 
-    it("STEP 3. Creating DLS token contract", async function () {
-        const TokenDLS = await hre.ethers.getContractFactory("TokenDLS");
-        tokendls = await TokenDLS.deploy(
-            process.env.DLS_INITIALSUPPLY,
-            process.env.DLS_NAME,
-            process.env.DLS_SYMBOL
+    it("STEP 3. Creating XRMCH token contract", async function () {
+        const TokenXMRCH = await hre.ethers.getContractFactory("TokenXMRCH");
+        tokenxmrch = await TokenXMRCH.deploy(
+            process.env.XMRCH_INITIALSUPPLY,
+            process.env.XMRCH_NAME,
+            process.env.XMRCH_SYMBOL
         );
 
-        staking.initialize(tokendld.address, tokendls.address);
+        staking.initialize(tokenmrch.address, tokenxmrch.address);
     });
 
     it("STEP 4. Minting", async function () {
         const [...addr] = await ethers.getSigners();
-        tokendls.Mint(ethers.utils.parseEther("100000.0"));
-        tokendls.transfer(staking.address, ethers.utils.parseEther("10000.0"));
+        tokenxmrch.Mint(ethers.utils.parseEther("100000.0"));
+        tokenxmrch.transfer(staking.address, ethers.utils.parseEther("10000.0"));
     });
 
     it("STEP 5. Staking", async function () {
@@ -63,7 +63,7 @@ describe("DAOLand Staking test", async () => {
         console.log("Epoch Round:", (await staking.epochRound()).toString());
 
         // staking
-        await tokendld.approve(staking.address, ethers.utils.parseEther("1000.0"));
+        await tokenmrch.approve(staking.address, ethers.utils.parseEther("1000.0"));
         await staking.stake(ethers.utils.parseEther("30.0"));
 
         info = await staking.getUserInfoByAddress(addr[0].address);
@@ -100,13 +100,13 @@ describe("DAOLand Staking test", async () => {
         console.log("Amount staked:", info[0] / 1e18);
         console.log("Available rewards:", info[1] / 1e18);
 
-        let balance = await tokendld.balanceOf(addr[0].address);
+        let balance = await tokenmrch.balanceOf(addr[0].address);
         // console.log(balance / 1e18);
 
         // claiming
         await staking.claim();
 
-        balance = await tokendls.balanceOf(addr[0].address);
+        balance = await tokenxmrch.balanceOf(addr[0].address);
         // console.log(balance / 1e18);
 
         // staking againg
@@ -134,13 +134,13 @@ describe("DAOLand Staking test", async () => {
     it("STEP 6. Unstaking", async function () {
         const [...addr] = await ethers.getSigners();
 
-        let balanceBefore = await tokendld.balanceOf(addr[0].address);
+        let balanceBefore = await tokenmrch.balanceOf(addr[0].address);
         console.log(balanceBefore.toString());
 
         await staking.stake(ethers.utils.parseEther("25.0"));
         await staking.unstake(ethers.utils.parseEther("20.0"));
 
-        let balanceAfter = await tokendld.balanceOf(addr[0].address);
+        let balanceAfter = await tokenmrch.balanceOf(addr[0].address);
         console.log(balanceAfter.toString());
 
         console.log(parseInt(balanceBefore)-parseInt(balanceAfter));
@@ -151,15 +151,15 @@ describe("DAOLand Staking test", async () => {
         await staking.stake(ethers.utils.parseEther("150.0"));
         await staking.unstake(ethers.utils.parseEther("50.0"));
 
-        balanceAfter = await tokendld.balanceOf(addr[0].address);
+        balanceAfter = await tokenmrch.balanceOf(addr[0].address);
         console.log(balanceAfter.toString());
 
         await staking.unstake(ethers.utils.parseEther("105.0"));
 
-        balanceAfter = await tokendld.balanceOf(addr[0].address);
+        balanceAfter = await tokenmrch.balanceOf(addr[0].address);
         console.log(balanceAfter.toString());
 
-        let balance = await tokendld.balanceOf(staking.address);
+        let balance = await tokenmrch.balanceOf(staking.address);
         console.log(balance.toString());
     });
 

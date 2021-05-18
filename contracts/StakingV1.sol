@@ -9,7 +9,7 @@ import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/SafeERC20.sol";
 import "openzeppelin-solidity/contracts/utils/ReentrancyGuard.sol";
 
-contract Staking is AccessControl, ReentrancyGuard {
+contract StakingV1 is AccessControl, ReentrancyGuard {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
@@ -105,13 +105,13 @@ contract Staking is AccessControl, ReentrancyGuard {
      * Requirements:
      *
      * - `_IUniswapV2Pair` address of LP MRCH token.
-     * - `_TokenXMRCH` address of DLS token.
+     * - `_TokenXMRCH` address of XMRCH token.
      */
     function initialize(address _IUniswapV2Pair, address _TokenXMRCH) external {
         require(hasRole(ADMIN_ROLE, msg.sender), "Caller is not an admin");
         require(
-            address(stakeToken) == address(0) &&
-                address(rewardToken) == address(0),
+            address(stakeToken) == address(0)
+            && address(rewardToken) == address(0),
             "Staking: contract already initialized"
         );
         stakeToken = ERC20(_IUniswapV2Pair);
@@ -325,7 +325,7 @@ contract Staking is AccessControl, ReentrancyGuard {
     }
 
     /**
-     * @dev Claimes reward TokenXMRCH tokens
+     * @dev Claims reward TokenXMRCH tokens
      *
      */
     function claim() public nonReentrant {
