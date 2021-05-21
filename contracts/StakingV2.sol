@@ -1,80 +1,46 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.7.6;
 
-import "./tokens/TokenMRCH.sol";
-import "openzeppelin-solidity/contracts/access/AccessControl.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/SafeERC20.sol";
-import "openzeppelin-solidity/contracts/utils/ReentrancyGuard.sol";
+import "openzeppelin-solidity/contracts/access/AccessControl.sol";
 
-contract StakingV2 is AccessControl, ReentrancyGuard {
-    using SafeMath for uint256;
+contract StakingV2 is AccessControl {
+    using SafeMath for uint;
     using SafeERC20 for IERC20;
 
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
 
-    struct Stake {
-        uint256 amount;
-        uint256 rewardAllowed;
-        uint256 rewardDebt;
-        uint256 distributed;
-        uint256 lastAmount;
-        uint256 stakeTime;
+    /// @notice A checkpoint for marking number of stake tokens from a given block
+    struct Checkpoint {
+        uint32 fromBlock;
+        uint96 amount;
     }
 
-    mapping(address => Stake) public stakes;
+    /// @notice A record of stake tokens checkpoints for each account, by index
+    mapping (address => mapping (uint32 => Checkpoint)) public checkpoints;
 
-    // ERC20 LP MRCH token staking to the contract
-    // and MRCH token earned by stakers as reward.
-    ERC20 public stakeToken;
-    TokenMRCH public rewardToken;
+    /// @notice The number of checkpoints for each account
+    mapping (address => uint32) public numCheckpoints;
 
-    uint256 public tokensPerStake;
-    uint256 public producedReward;
+    address public stakeToken; // Uniswap LP token from pool MRCH|ETH
+    address public rewardToken; // MRCH token
 
-    uint256 public startTime;
-    uint256 public distributionTime;
+    uint public stakingStart;
+    uint public roundTime; // every round time (for example, 91 days), new reward amount
+    uint public roundRewardAmount; // reward for each round
 
-    uint256 public allReward;
-    uint256 public rewardTotal;
-    uint256 public stakedTotal;
-    uint256 public distributed;
-
-    uint256 public allProduced;
-    uint256 public producedTime;
-
-    uint256 public halvingRound;
-    uint256 public halvingTime;
-
-    uint256 public epochRound;
-    uint256 public epochTPS;
-
-    uint256 public immutable maxCap;
-
-    uint256 public fineTime;
-    uint256 public finePercent;
-    uint256 public finePrecision;
-    uint256 public totalFine;
-
-    event tokensStaked(uint256 amount, uint256 time, address indexed sender);
-    event tokensClaimed(uint256 amount, uint256 time, address indexed sender);
-    event tokensUnstaked(
-        uint256 amount,
-        uint256 fineAmount,
-        uint256 time,
-        address indexed sender
-    );
+    event RewardOut(address staker, uint amount);
+    event StakeAmountChanged(address staker, uint oldAmount, uint newAmount);
 
     constructor(
-        uint256 _rewardTotal, // Reward amount of tokens produced during `distributionTime`
-        uint256 _stakingStart, // Time of staking start
-        uint256 _distributionTime, // Time to produce `rewardTotal`
-        uint256 _halvingTime, // Period of halving
-        uint256 _fineTime,
-        uint256 _finePercent,
-        uint256 _finePrecision
-    ) public {
+        address stakeToken_,
+        address rewardToken_,
+        uint stakingStart_,
+        uint roundTime_,
+        uint roundRewardAmount_
+    ) {
         // Grant the contract deployer the default admin role: it will be able
         // to grant and revoke any roles
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -82,274 +48,193 @@ contract StakingV2 is AccessControl, ReentrancyGuard {
         // Sets `DEFAULT_ADMIN_ROLE` as ``ADMIN_ROLE``'s admin role.
         _setRoleAdmin(ADMIN_ROLE, DEFAULT_ADMIN_ROLE);
 
-        require(_rewardTotal > 0, "Staking: amount of reward must be positive");
-        rewardTotal = _rewardTotal;
+        require(stakeToken_ != address(0), "MRCHStaking: stake token address is 0");
+        stakeToken = stakeToken_;
 
-        startTime = _stakingStart;
-        producedTime = _stakingStart;
-        distributionTime = _distributionTime;
-        epochRound = 0;
-        epochTPS = 0;
-        halvingRound = 0;
-        halvingTime = _halvingTime;
-        maxCap = 0;
-        fineTime = _fineTime;
-        finePercent = _finePercent;
-        finePrecision = _finePrecision;
+        require(rewardToken_ != address(0), "MRCHStaking: reward token address is 0");
+        rewardToken = rewardToken_;
+
+        stakingStart = stakingStart_;
+
+        roundTime = roundTime_;
+
+        require(roundRewardAmount > 0, "MRCHStaking: reward amount address is 0");
+        roundRewardAmount = roundRewardAmount_;
     }
 
-    /**
-     * @dev Initializes the LP MRCH and MRCH tokens
-     * @param _IUniswapV2Pair The address of LP MRCH token.
-     * @param _TokenMRCH` The address of MRCH token.
-     */
-    function initialize(address _IUniswapV2Pair, address _TokenMRCH) external {
-        require(hasRole(ADMIN_ROLE, msg.sender), "Caller is not an admin");
-        require(
-            address(stakeToken) == address(0)
-            && address(rewardToken) == address(0),
-            "Staking: contract already initialized"
-        );
+    function addReward(uint amount) public returns (bool) {
+        require(amount > 0, "MRCHStaking::addReward: reward must be positive");
 
-        stakeToken = ERC20(_IUniswapV2Pair);
-        rewardToken = TokenMRCH(_TokenMRCH);
-    }
-
-    /**
-     * @dev Runs new epoch every 7 days and executes the halving of Reward amount every 91 day
-     * @param _tokensPerStake The tokens per stake amount
-     */
-    function newEpoch(uint256 _tokensPerStake) private {
-        epochTPS = _tokensPerStake;
-        epochRound = block.timestamp.sub(startTime).div(distributionTime);
-
-        if ((block.timestamp.sub(startTime).div(halvingTime)) > halvingRound) {
-            allProduced = produced();
-            producedTime = block.timestamp;
-            rewardTotal = rewardTotal.div(2);
-            halvingRound = block.timestamp.sub(startTime).div(halvingTime);
-        }
-    }
-
-    /**
-     * @dev Calculates the produced amount of reward tokens
-     */
-    function produced() public view returns (uint256) {
-        return
-            allProduced.add(
-                rewardTotal.mul(block.timestamp - producedTime).div(
-                    distributionTime
-                )
-            );
-    }
-
-    /**
-     * @dev Calculates and updates `tokensPerStake`
-     */
-    function update() public {
-        uint256 producedAtNow = produced();
-        if (producedAtNow > producedReward && stakedTotal > 0) {
-            uint256 producedNew = producedAtNow.sub(producedReward);
-            tokensPerStake = tokensPerStake.add(
-                producedNew.mul(1e18).div(stakedTotal)
-            );
-            producedReward = producedReward.add(producedNew);
-        }
-
-        if (block.timestamp.sub(startTime).div(distributionTime) > epochRound) {
-            newEpoch(tokensPerStake);
-        }
-    }
-
-    /**
-     * @dev getRewardToken - return address of the reward token
-     */
-    function getRewardToken() external view returns (address) {
-        return address(rewardToken);
-    }
-
-    /**
-     * @dev getStakingToken - return address of the staking token
-     */
-    function getStakingToken() external view returns (address) {
-        return address(stakeToken);
-    }
-
-    /**
-     * @dev getDecimals - return decimals for the staking and reward tokens
-     */
-    function getDecimals() external view returns (uint256, uint256) {
-        return (ERC20(stakeToken).decimals(), ERC20(rewardToken).decimals());
-    }
-
-    /**
-     * @dev `getUserInfoByAddress` - show information about `_user`
-     * @param _user The user address
-     * @return (staked, available, claimed) The staked LP MRCH amount, available claim amount and claimed amount
-     */
-    function getUserInfoByAddress(address _user) external view returns (uint256, uint256, uint256) {
-        Stake storage staker = stakes[_user];
-
-        uint staked_ = staker.amount;
-        uint available_ = getClaim(_user);
-        uint claimed_ = staker.distributed;
-
-        return (staked_, available_, claimed_);
-    }
-
-    /**
-     * @dev Stakes the LP MRCH tokens
-     * @param _amount The LP MRCH amount
-     * @return The result (true or false)
-     */
-    function stake(uint256 _amount) external returns (bool) {
-        require(
-            block.timestamp >= startTime,
-            "Staking: staking time has not come yet"
-        );
-
-        require(_amount > 0, "Staking: amount must be positive");
-
-        Stake storage staker = stakes[msg.sender];
-
-        if (stakedTotal != 0) {
-            update();
-        } else if (
-            block.timestamp.sub(startTime).div(distributionTime) > epochRound
-        ) {
-            newEpoch(tokensPerStake);
-        }
-
-        // Transfer specified amount of staking tokens to the contract
-        IERC20(stakeToken).safeTransferFrom(msg.sender, address(this), _amount);
-
-        stakedTotal = stakedTotal.add(_amount);
-        staker.amount = staker.amount.add(_amount);
-        staker.rewardDebt = staker.rewardDebt.add(
-            _amount.mul(epochTPS).div(1e18)
-        );
-
-        staker.lastAmount = _amount;
-        staker.stakeTime = block.timestamp;
-
-        update();
-
-        emit tokensStaked(_amount, block.timestamp, msg.sender);
+        doTransferIn(msg.sender, rewardToken, amount);
 
         return true;
     }
 
+    function stake(uint amount) public returns (bool) {
+        require(amount > 0, "MRCHStaking::stake: amount must be positive");
+
+        uint timeStamp = getTimeStamp();
+        require(timeStamp >= stakingStart.sub(roundTime), "MRCHStaking::stake: bad timing for the request");
+
+        address staker = msg.sender;
+
+        doTransferIn(staker, stakeToken, amount);
+
+        uint32 stakerNum = numCheckpoints[staker];
+        uint96 stakerOldAmount = stakerNum > 0 ? checkpoints[staker][stakerNum - 1].amount : 0;
+        uint96 stakerNewAmount = add96(stakerOldAmount, uint96(amount), "MRCHStaking::stake: tokens amount overflows");
+        _writeCheckpoint(staker, stakerNum, stakerOldAmount, stakerNewAmount);
+
+        return true;
+    }
+
+    function withdraw() public returns (bool) {
+        address staker = msg.sender;
+        require(claimReward(), "MRCHStaking::withdraw: claim error");
+
+        uint amount = getPriorAmount(msg.sender, block.number);
+        return withdrawWithoutReward(amount);
+    }
+
+    function withdrawWithoutReward(uint amount) public returns (bool) {
+        return withdrawInternal(msg.sender, amount);
+    }
+
+    function withdrawInternal(address staker, uint amountOut) internal returns (bool) {
+        require(getTimeStamp() > stakingStart, "MRCHStaking::withdrawInternal: bad timing for the request");
+        require(amountOut > 0, "MRCHStaking::withdrawInternal: must be positive");
+
+        uint32 stakerNum = numCheckpoints[staker];
+        uint96 stakerOldAmount = stakerNum > 0 ? checkpoints[staker][stakerNum - 1].amount : 0;
+        uint96 stakerNewAmount = sub96(stakerOldAmount, uint96(amountOut), "MRCHStaking::withdrawInternal: token amount underflows");
+        _writeCheckpoint(staker, stakerNum, stakerOldAmount, stakerNewAmount);
+
+        doTransferOut(stakeToken, staker, amountOut);
+
+        return true;
+    }
+
+    function claimReward() public returns (bool) {
+        address staker = msg.sender;
+
+        uint rewardAmount = currentReward(staker);
+
+        if (rewardAmount == 0) {
+            return true;
+        }
+
+        doTransferOut(rewardToken, staker, rewardAmount);
+
+        emit RewardOut(staker, rewardAmount);
+
+        return true;
+    }
+
+//    function calcReward() public view returns (uint) {
+//        return 0;
+//    }
+
+    function roundNum(uint timeStamp) public view returns (uint) {
+        return timeStamp.sub(stakingStart).div(roundTime);
+    }
+
+    function currentReward(address staker) public view returns (uint) {
+        uint timeStamp = getTimeStamp();
+
+        if (timeStamp < stakingStart) {
+            return 0;
+        }
+
+        // uint rewardAmount = calcReward();
+
+        return 0; //rewardAmount;
+    }
+
+    function doTransferOut(address token, address to, uint amount) internal {
+        if (amount == 0) {
+            return;
+        }
+
+        IERC20 ERC20Interface = IERC20(token);
+        ERC20Interface.safeTransfer(to, amount);
+    }
+
+    function doTransferIn(address from, address token, uint amount) internal {
+        IERC20 ERC20Interface = IERC20(token);
+        ERC20Interface.safeTransferFrom(from, address(this), amount);
+    }
+
+    function getTimeStamp() public view virtual returns (uint) {
+        return block.timestamp;
+    }
+
     /**
-     * @dev Unstakes the staked LP MRCH tokens
-     * @param _amount The unstake amount
-     * @return The result (true or false)
+     * @notice Determine the prior number of stake tokens for an account as of a block number
+     * @dev Block number must be a finalized block or else this function will revert to prevent misinformation.
+     * @param account The address of the account to check
+     * @param blockNumber The block number to get the vote balance at
+     * @return The number of stake tokens the account had as of the given block
      */
-    function unstake(uint256 _amount) public payable nonReentrant returns (bool) {
-        Stake storage staker = stakes[msg.sender];
-        require(
-            staker.amount >= _amount,
-            "Staking: not enough tokens to unstake"
-        );
-        update();
+    function getPriorAmount(address account, uint blockNumber) public view returns (uint96) {
+        require(blockNumber < block.number, "MRCHStaking::getPriorAmount: not yet determined");
 
-        staker.rewardAllowed = staker.rewardAllowed.add(
-            _amount.div(1e18).mul(epochTPS)
-        );
-        staker.amount = staker.amount.sub(_amount);
+        uint32 nCheckpoints = numCheckpoints[account];
+        if (nCheckpoints == 0) {
+            return 0;
+        }
 
-        uint256 unstakeAmount;
-        uint256 fineAmount;
-        if (block.timestamp - staker.stakeTime < fineTime) {
-            if (staker.lastAmount <= _amount) {
-                fineAmount = finePercent.mul(staker.lastAmount).div(
-                    finePrecision
-                );
-                staker.lastAmount = 0;
-                staker.stakeTime = 0;
+        // First check most recent balance
+        if (checkpoints[account][nCheckpoints - 1].fromBlock <= blockNumber) {
+            return checkpoints[account][nCheckpoints - 1].amount;
+        }
+
+        // Next check implicit zero balance
+        if (checkpoints[account][0].fromBlock > blockNumber) {
+            return 0;
+        }
+
+        uint32 lower = 0;
+        uint32 upper = nCheckpoints - 1;
+        while (upper > lower) {
+            uint32 center = upper - (upper - lower) / 2; // ceil, avoiding overflow
+            Checkpoint memory cp = checkpoints[account][center];
+            if (cp.fromBlock == blockNumber) {
+                return cp.amount;
+            } else if (cp.fromBlock < blockNumber) {
+                lower = center;
             } else {
-                fineAmount = finePercent.mul(_amount).div(finePrecision);
-                staker.lastAmount = staker.lastAmount.sub(_amount);
+                upper = center - 1;
             }
-            unstakeAmount = _amount.sub(fineAmount);
-            totalFine = totalFine.add(fineAmount);
+        }
+        return checkpoints[account][lower].amount;
+    }
+
+    function _writeCheckpoint(address staker, uint32 nCheckpoints, uint96 oldAmount, uint96 newAmount) internal {
+        uint32 blockNumber = safe32(block.number, "PPie::_writeCheckpoint: block number exceeds 32 bits");
+
+        if (nCheckpoints > 0 && checkpoints[staker][nCheckpoints - 1].fromBlock == blockNumber) {
+            checkpoints[staker][nCheckpoints - 1].amount = newAmount;
         } else {
-            unstakeAmount = _amount;
+            checkpoints[staker][nCheckpoints] = Checkpoint(blockNumber, newAmount);
+            numCheckpoints[staker] = nCheckpoints + 1;
         }
 
-        IERC20(stakeToken).safeTransfer(msg.sender, unstakeAmount);
-        stakedTotal = stakedTotal.sub(_amount);
-
-        emit tokensUnstaked(unstakeAmount, fineAmount, block.timestamp, msg.sender);
-
-        return true;
+        emit StakeAmountChanged(staker, oldAmount, newAmount);
     }
 
-    /**
-     * @dev Calculates available reward TokenXMRCH tokens
-     * @param _staker The staker address
-     * @param _tps The tokens per stake amount
-     * @param _epochRound The epoch round num
-     * @return reward
-     */
-    function calcReward(address _staker, uint256 _tps, uint256 _epochRound) private view returns (uint256) {
-        uint reward;
-
-        Stake storage staker = stakes[_staker];
-
-        if (_epochRound == 0) return 0;
-
-        reward = staker
-            .amount
-            .mul(_tps)
-            .div(1e18)
-            .add(staker.rewardAllowed)
-            .sub(staker.rewardDebt)
-            .sub(staker.distributed);
-
-        return reward;
+    function add96(uint96 a, uint96 b, string memory errorMessage) internal pure returns (uint96) {
+        uint96 c = a + b;
+        require(c >= a, errorMessage);
+        return c;
     }
 
-    /**
-     * @dev Claims reward TokenXMRCH tokens
-     */
-    function claim() public nonReentrant {
-        update();
-
-        uint256 reward = calcReward(msg.sender, epochTPS, epochRound);
-        require(reward > 0, "Staking: nothing to claim");
-
-        Stake storage staker = stakes[msg.sender];
-
-        staker.distributed = staker.distributed.add(reward);
-        distributed = distributed.add(reward);
-
-        IERC20(rewardToken).safeTransfer(msg.sender, reward);
-
-        emit tokensClaimed(reward, block.timestamp, msg.sender);
+    function sub96(uint96 a, uint96 b, string memory errorMessage) internal pure returns (uint96) {
+        require(b <= a, errorMessage);
+        return a - b;
     }
 
-    /**
-     * @dev Shows amount of the reward TokenXMRCH
-     * @param _staker The staker address
-     * @return reward
-     */
-    function getClaim(address _staker) public view returns (uint256) {
-        uint reward;
-
-        uint256 _tps = tokensPerStake;
-        uint256 _epochRound = epochRound;
-        uint256 _epochTPS = epochTPS;
-
-        if (stakedTotal > 0) {
-            uint256 producedAtNow = produced();
-            if (producedAtNow > producedReward) {
-                uint256 producedNew = producedAtNow.sub(producedReward);
-                _tps = _tps.add(producedNew.mul(1e18).div(stakedTotal));
-            }
-        }
-
-        reward = calcReward(_staker, _epochTPS, _epochRound);
-
-        return reward;
+    function safe32(uint n, string memory errorMessage) pure internal returns (uint32) {
+        require(n < 2**32, errorMessage);
+        return uint32(n);
     }
 }
