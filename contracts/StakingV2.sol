@@ -27,8 +27,8 @@ contract StakingV2 is AccessControl {
     address public stakeToken; // Uniswap LP token from pool MRCH|ETH
     address public rewardToken; // MRCH token
 
-    uint public stakingStart;
-    uint public roundTime; // every round time (for example, 91 days), new reward amount
+    uint public startBlockNum; // start block num
+    uint public roundBlocks; // every round time in blocks, new reward amount
     uint public roundRewardAmount; // reward for each round
 
     event RewardOut(address staker, uint amount);
@@ -37,8 +37,8 @@ contract StakingV2 is AccessControl {
     constructor(
         address stakeToken_,
         address rewardToken_,
-        uint stakingStart_,
-        uint roundTime_,
+        uint startBlockNum_,
+        uint roundBlocks_,
         uint roundRewardAmount_
     ) {
         // Grant the contract deployer the default admin role: it will be able
@@ -54,9 +54,9 @@ contract StakingV2 is AccessControl {
         require(rewardToken_ != address(0), "MRCHStaking: reward token address is 0");
         rewardToken = rewardToken_;
 
-        stakingStart = stakingStart_;
+        startBlockNum = startBlockNum_;
 
-        roundTime = roundTime_;
+        roundBlocks = roundBlocks_;
 
         require(roundRewardAmount > 0, "MRCHStaking: reward amount address is 0");
         roundRewardAmount = roundRewardAmount_;
@@ -70,20 +70,23 @@ contract StakingV2 is AccessControl {
         return true;
     }
 
-    function stake(uint amount) public returns (bool) {
-        require(amount > 0, "MRCHStaking::stake: amount must be positive");
-
-        uint timeStamp = getTimeStamp();
-        require(timeStamp >= stakingStart.sub(roundTime), "MRCHStaking::stake: bad timing for the request");
+    function stake(uint amountIn) public returns (bool) {
+        require(amountIn > 0, "MRCHStaking::stake: amount must be positive");
+        require(block.number >= startBlockNum.sub(roundBlocks), "MRCHStaking::stake: bad timing for the request");
 
         address staker = msg.sender;
 
-        doTransferIn(staker, stakeToken, amount);
+        doTransferIn(staker, stakeToken, amountIn);
 
         uint32 stakerNum = numCheckpoints[staker];
         uint96 stakerOldAmount = stakerNum > 0 ? checkpoints[staker][stakerNum - 1].amount : 0;
-        uint96 stakerNewAmount = add96(stakerOldAmount, uint96(amount), "MRCHStaking::stake: tokens amount overflows");
+        uint96 stakerNewAmount = add96(stakerOldAmount, uint96(amountIn), "MRCHStaking::stake: staker tokens amount overflows");
         _writeCheckpoint(staker, stakerNum, stakerOldAmount, stakerNewAmount);
+
+        uint32 contractNum = numCheckpoints[address(this)];
+        uint96 totalOldAmount = stakerNum > 0 ? checkpoints[address(this)][contractNum - 1].amount : 0;
+        uint96 totalNewAmount = add96(totalOldAmount, uint96(amountIn), "MRCHStaking::stake: contract tokens amount overflows");
+        _writeCheckpoint(address(this), contractNum, totalOldAmount, totalNewAmount);
 
         return true;
     }
@@ -101,13 +104,18 @@ contract StakingV2 is AccessControl {
     }
 
     function withdrawInternal(address staker, uint amountOut) internal returns (bool) {
-        require(getTimeStamp() > stakingStart, "MRCHStaking::withdrawInternal: bad timing for the request");
+        require(block.number > startBlockNum, "MRCHStaking::withdrawInternal: bad timing for the request");
         require(amountOut > 0, "MRCHStaking::withdrawInternal: must be positive");
 
         uint32 stakerNum = numCheckpoints[staker];
         uint96 stakerOldAmount = stakerNum > 0 ? checkpoints[staker][stakerNum - 1].amount : 0;
-        uint96 stakerNewAmount = sub96(stakerOldAmount, uint96(amountOut), "MRCHStaking::withdrawInternal: token amount underflows");
+        uint96 stakerNewAmount = sub96(stakerOldAmount, uint96(amountOut), "MRCHStaking::withdrawInternal: staker token amount underflows");
         _writeCheckpoint(staker, stakerNum, stakerOldAmount, stakerNewAmount);
+
+        uint32 contractNum = numCheckpoints[address(this)];
+        uint96 totalOldAmount = stakerNum > 0 ? checkpoints[address(this)][contractNum - 1].amount : 0;
+        uint96 totalNewAmount = sub96(totalOldAmount, uint96(amountOut), "MRCHStaking::withdrawInternal: contract tokens amount underflows");
+        _writeCheckpoint(address(this), contractNum, totalOldAmount, totalNewAmount);
 
         doTransferOut(stakeToken, staker, amountOut);
 
@@ -134,14 +142,12 @@ contract StakingV2 is AccessControl {
 //        return 0;
 //    }
 
-    function roundNum(uint timeStamp) public view returns (uint) {
-        return timeStamp.sub(stakingStart).div(roundTime);
+    function roundNum(uint blockNum) public view returns (uint) {
+        return blockNum.sub(startBlockNum).div(roundBlocks);
     }
 
     function currentReward(address staker) public view returns (uint) {
-        uint timeStamp = getTimeStamp();
-
-        if (timeStamp < stakingStart) {
+        if (block.number < startBlockNum) {
             return 0;
         }
 
