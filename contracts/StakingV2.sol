@@ -24,6 +24,8 @@ contract StakingV2 is AccessControl {
     /// @notice The number of checkpoints for each account
     mapping (address => uint32) public numCheckpoints;
 
+    mapping (address => uint32) public lastClaim; // block number of last claim for staker
+
     address public stakeToken; // Uniswap LP token from pool MRCH|ETH
     address public rewardToken; // MRCH token
 
@@ -92,7 +94,6 @@ contract StakingV2 is AccessControl {
     }
 
     function withdraw() public returns (bool) {
-        address staker = msg.sender;
         require(claimReward(), "MRCHStaking::withdraw: claim error");
 
         uint amount = getPriorAmount(msg.sender, block.number);
@@ -125,7 +126,7 @@ contract StakingV2 is AccessControl {
     function claimReward() public returns (bool) {
         address staker = msg.sender;
 
-        uint rewardAmount = currentReward(staker);
+        uint rewardAmount = calcReward(staker);
 
         if (rewardAmount == 0) {
             return true;
@@ -133,27 +134,42 @@ contract StakingV2 is AccessControl {
 
         doTransferOut(rewardToken, staker, rewardAmount);
 
+        lastClaim[staker] = uint32(currentRoundNum());
+
         emit RewardOut(staker, rewardAmount);
 
         return true;
     }
 
-//    function calcReward() public view returns (uint) {
-//        return 0;
-//    }
+    function calcReward(address staker) public view returns (uint) {
+        uint reward;
+        uint lastRound = lastClaim[staker];
 
-    function roundNum(uint blockNum) public view returns (uint) {
-        return blockNum.sub(startBlockNum).div(roundBlocks);
-    }
+        uint stakerAmount;
+        uint totalAmount;
+        uint endBlockRoundNum;
 
-    function currentReward(address staker) public view returns (uint) {
-        if (block.number < startBlockNum) {
-            return 0;
+        for(uint i = lastRound; i < currentRoundNum(); i++) {
+            endBlockRoundNum = startBlockNum.add(roundBlocks * i);
+            stakerAmount = getPriorAmount(staker, endBlockRoundNum);
+            totalAmount = getPriorAmount(address(this), endBlockRoundNum);
+
+            reward = reward.add(roundRewardAmount.mul(stakerAmount).div(totalAmount));
         }
 
-        // uint rewardAmount = calcReward();
+        return reward;
+    }
 
-        return 0; //rewardAmount;
+    function currentRoundNum() public view returns (uint) {
+        return roundNum(block.number);
+    }
+
+    function roundNum(uint blockNum) public view returns (uint) {
+        if (blockNum > startBlockNum) {
+            return blockNum.sub(startBlockNum).div(roundBlocks) + 1; // first round num is 1
+        } else {
+            return 0;
+        }
     }
 
     function doTransferOut(address token, address to, uint amount) internal {
@@ -215,17 +231,17 @@ contract StakingV2 is AccessControl {
         return checkpoints[account][lower].amount;
     }
 
-    function _writeCheckpoint(address staker, uint32 nCheckpoints, uint96 oldAmount, uint96 newAmount) internal {
-        uint32 blockNumber = safe32(block.number, "PPie::_writeCheckpoint: block number exceeds 32 bits");
+    function _writeCheckpoint(address user, uint32 nCheckpoints, uint96 oldAmount, uint96 newAmount) internal {
+        uint32 blockNumber = safe32(block.number, "MRCHStaking::_writeCheckpoint: block number exceeds 32 bits");
 
-        if (nCheckpoints > 0 && checkpoints[staker][nCheckpoints - 1].fromBlock == blockNumber) {
-            checkpoints[staker][nCheckpoints - 1].amount = newAmount;
+        if (nCheckpoints > 0 && checkpoints[user][nCheckpoints - 1].fromBlock == blockNumber) {
+            checkpoints[user][nCheckpoints - 1].amount = newAmount;
         } else {
-            checkpoints[staker][nCheckpoints] = Checkpoint(blockNumber, newAmount);
-            numCheckpoints[staker] = nCheckpoints + 1;
+            checkpoints[user][nCheckpoints] = Checkpoint(blockNumber, newAmount);
+            numCheckpoints[user] = nCheckpoints + 1;
         }
 
-        emit StakeAmountChanged(staker, oldAmount, newAmount);
+        emit StakeAmountChanged(user, oldAmount, newAmount);
     }
 
     function add96(uint96 a, uint96 b, string memory errorMessage) internal pure returns (uint96) {
