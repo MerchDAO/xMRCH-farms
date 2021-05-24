@@ -4,93 +4,84 @@ pragma solidity 0.7.6;
 import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/SafeERC20.sol";
-import "openzeppelin-solidity/contracts/access/AccessControl.sol";
 
-contract StakingV2 is AccessControl {
+contract StakingV2 {
     using SafeMath for uint;
     using SafeERC20 for IERC20;
 
-    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
-
     struct Stake {
-        uint256 amount;
-        uint64 sinceBlock;
+        uint amount;
+        uint rewardOut;
     }
 
-    struct Total {
-        uint256 amount;
-    }
-
-    // round => user => stake
     mapping(address => Stake) public stakes;
-    Total public total;
 
     address public stakeToken; // Uniswap LP token from pool MRCH|ETH
     address public rewardToken; // MRCH token
 
-    uint public startBlockNum; // start block num
-    uint public roundBlocks; // every round time in blocks, new reward amount
+    uint public stakingStart;
+    uint public stakingEnd;
+    uint public roundTime; // every round time in blocks, new reward amount
     uint public roundRewardAmount; // reward for each round
 
-    event RewardOut(address staker, uint amount);
-    event StakeAmountChanged(address staker, uint oldAmount, uint newAmount);
+    uint public stakedTotal;
+
+    event Staked(address staker, uint amount);
+    event RewardOut(address staker, address token, uint amount);
 
     constructor(
         address stakeToken_,
         address rewardToken_,
-        uint startBlockNum_,
-        uint roundBlocks_,
+        uint stakingStart_,
+        uint stakingEnd_,
+        uint roundTime_,
         uint roundRewardAmount_
     ) {
-        // Grant the contract deployer the default admin role: it will be able
-        // to grant and revoke any roles
-        _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _setupRole(ADMIN_ROLE, msg.sender);
-        // Sets `DEFAULT_ADMIN_ROLE` as ``ADMIN_ROLE``'s admin role.
-        _setRoleAdmin(ADMIN_ROLE, DEFAULT_ADMIN_ROLE);
-
         require(stakeToken_ != address(0), "MRCHStaking: stake token address is 0");
         stakeToken = stakeToken_;
 
         require(rewardToken_ != address(0), "MRCHStaking: reward token address is 0");
         rewardToken = rewardToken_;
 
-        startBlockNum = startBlockNum_;
+        stakingStart = stakingStart_;
 
-        roundBlocks = roundBlocks_;
+        require(stakingEnd_ > stakingStart, "MRCHStaking: staking end must be after staking start");
+        stakingEnd = stakingEnd_;
+
+        roundTime = roundTime_;
 
         require(roundRewardAmount > 0, "MRCHStaking: reward amount address is 0");
         roundRewardAmount = roundRewardAmount_;
     }
 
-    function addReward(uint amount) public returns (bool) {
-        require(amount > 0, "MRCHStaking::addReward: reward must be positive");
+    function addReward(uint rewardAmount) public returns (bool) {
+        require(rewardAmount > 0, "MRCHStaking: reward must be positive");
 
-        doTransferIn(msg.sender, rewardToken, amount);
+        doTransferIn(msg.sender, rewardToken, rewardAmount);
 
         return true;
     }
 
-    function stake(uint amountIn) public returns (bool) {
-        require(amountIn > 0, "MRCHStaking::stake: amount must be positive");
-        require(block.number >= startBlockNum.sub(roundBlocks), "MRCHStaking::stake: bad timing for the request");
-        require(block.number < startBlockNum.add(roundBlocks), "MRCHStaking::stake: bad timing for the request");
+    function stake(uint amount) public returns (bool) {
+        require(amount > 0, "MRCHStaking: must be positive");
+        require(getTimeStamp() >= stakingStart, "MRCHStaking: bad timing for the request");
+        require(getTimeStamp() < stakingEnd, "MRCHStaking: bad timing for the request");
 
-        address user = msg.sender;
+        address staker = msg.sender;
 
-        doTransferIn(user, stakeToken, amountIn);
+        doTransferIn(staker, stakeToken, amount);
 
-        Stake storage staker = stakes[user];
-        staker.amount = amountIn;
+        emit Staked(staker, amount);
 
-        total.amount = total.amount.add(amountIn);
+        // Transfer is completed
+        stakedTotal = stakedTotal.add(amount);
+        stakes[staker].amount = stakes[staker].amount.add(amount);
 
         return true;
     }
 
     function withdraw() public returns (bool) {
-        require(claimReward(), "MRCHStaking::withdraw: claim error");
-
+        require(claimReward(), "MRCHStaking: claim error");
         uint amount = stakes[msg.sender].amount;
 
         return withdrawWithoutReward(amount);
@@ -100,26 +91,26 @@ contract StakingV2 is AccessControl {
         return withdrawInternal(msg.sender, amount);
     }
 
-    function withdrawInternal(address user, uint amountOut) internal returns (bool) {
-        require(block.number > startBlockNum, "MRCHStaking::withdrawInternal: bad timing for the request");
-        require(amountOut > 0, "MRCHStaking::withdrawInternal: must be positive");
+    function withdrawInternal(address staker, uint amount) internal returns (bool) {
+        uint withdrawStart = stakingEnd.add(roundTime);
 
-        Stake storage staker = stakes[user];
-        staker.amount = staker.amount.sub(amountOut);
+        require(getTimeStamp() >= withdrawStart, "MRCHStaking: bad timing for the request");
+        require(amount > 0, "MRCHStaking: must be positive");
+        require(amount <= stakes[msg.sender].amount, "MRCHStaking: not enough balance");
 
-        total.amount = total.amount.sub(amountOut);
+        stakes[staker].amount = stakes[staker].amount.sub(amount);
 
-        doTransferOut(stakeToken, user, amountOut);
+        doTransferOut(stakeToken, staker, amount);
 
         return true;
     }
 
     function claimReward() public returns (bool) {
-        require(block.number >= startBlockNum.add(roundBlocks), "MRCHStaking::stake: bad timing for the request");
+        require(getTimeStamp() > stakingEnd, "PieStaking: bad timing for the request");
 
         address staker = msg.sender;
 
-        uint rewardAmount = calcReward(staker);
+        uint rewardAmount = currentReward(staker);
 
         if (rewardAmount == 0) {
             return true;
@@ -127,39 +118,50 @@ contract StakingV2 is AccessControl {
 
         doTransferOut(rewardToken, staker, rewardAmount);
 
-        emit RewardOut(staker, rewardAmount);
+        stakes[staker].rewardOut = stakes[staker].rewardOut.add(rewardAmount);
+
+        emit RewardOut(staker, rewardToken, rewardAmount);
 
         return true;
     }
 
-    function calcReward(address user) public view returns (uint) {
-        uint reward = roundRewardAmount.mul(stakes[user].amount).div(total.amount);
+    function currentReward(address staker) public view returns (uint) {
+        uint totalStakerReward = calcTotalReward(staker);
+        uint timeStamp = getTimeStamp();
 
-        return reward;
+        if (totalStakerReward == 0 || timeStamp < stakingEnd) {
+            return 0;
+        }
+
+        uint allTime = roundTime;
+        uint withdrawStart = stakingEnd.add(roundTime);
+
+        uint time = timeStamp < withdrawStart ? timeStamp.sub(stakingEnd) : allTime;
+
+        uint stakerRewardToTimestamp = totalStakerReward.mul(time).div(allTime);
+        uint rewardOut = stakes[staker].rewardOut;
+
+        return stakerRewardToTimestamp.sub(rewardOut);
     }
 
-    function getRoundNum() public view returns (uint) {
-        return roundNum(block.number);
+    function calcTotalReward(address staker) public view returns (uint) {
+        uint amount = stakes[staker].amount;
+
+        return calcReward(amount);
     }
 
-    function roundNum(uint blockNum) public view returns (uint) {
+    function calcReward(uint amount) public view returns (uint) {
+        uint rewardAmount = roundRewardAmount.mul(amount).div(stakedTotal);
 
+        return rewardAmount;
     }
 
     function doTransferOut(address token, address to, uint amount) internal {
-        if (amount == 0) {
-            return;
-        }
-
         IERC20 ERC20Interface = IERC20(token);
         ERC20Interface.safeTransfer(to, amount);
     }
 
     function doTransferIn(address from, address token, uint amount) internal {
-        if (amount == 0) {
-            return;
-        }
-
         IERC20 ERC20Interface = IERC20(token);
         ERC20Interface.safeTransferFrom(from, address(this), amount);
     }
