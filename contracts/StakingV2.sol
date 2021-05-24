@@ -13,13 +13,17 @@ contract StakingV2 is AccessControl {
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
 
     struct Stake {
-        address user;
         uint256 amount;
         uint64 sinceBlock;
-        uint64 untilBlock;
     }
 
+    struct Total {
+        uint256 amount;
+    }
+
+    // round => user => stake
     mapping(address => Stake) public stakes;
+    Total public total;
 
     address public stakeToken; // Uniswap LP token from pool MRCH|ETH
     address public rewardToken; // MRCH token
@@ -70,12 +74,16 @@ contract StakingV2 is AccessControl {
     function stake(uint amountIn) public returns (bool) {
         require(amountIn > 0, "MRCHStaking::stake: amount must be positive");
         require(block.number >= startBlockNum.sub(roundBlocks), "MRCHStaking::stake: bad timing for the request");
+        require(block.number < startBlockNum.add(roundBlocks), "MRCHStaking::stake: bad timing for the request");
 
-        address staker = msg.sender;
+        address user = msg.sender;
 
-        doTransferIn(staker, stakeToken, amountIn);
+        doTransferIn(user, stakeToken, amountIn);
 
-        // @Todo add data of stake
+        Stake storage staker = stakes[user];
+        staker.amount = amountIn;
+
+        total.amount = total.amount.add(amountIn);
 
         return true;
     }
@@ -83,7 +91,7 @@ contract StakingV2 is AccessControl {
     function withdraw() public returns (bool) {
         require(claimReward(), "MRCHStaking::withdraw: claim error");
 
-        uint amount = 0; // @Todo get all stake amount
+        uint amount = stakes[msg.sender].amount;
 
         return withdrawWithoutReward(amount);
     }
@@ -92,18 +100,23 @@ contract StakingV2 is AccessControl {
         return withdrawInternal(msg.sender, amount);
     }
 
-    function withdrawInternal(address staker, uint amountOut) internal returns (bool) {
+    function withdrawInternal(address user, uint amountOut) internal returns (bool) {
         require(block.number > startBlockNum, "MRCHStaking::withdrawInternal: bad timing for the request");
         require(amountOut > 0, "MRCHStaking::withdrawInternal: must be positive");
 
-        // @Todo change data of stake
+        Stake storage staker = stakes[user];
+        staker.amount = staker.amount.sub(amountOut);
 
-        doTransferOut(stakeToken, staker, amountOut);
+        total.amount = total.amount.sub(amountOut);
+
+        doTransferOut(stakeToken, user, amountOut);
 
         return true;
     }
 
     function claimReward() public returns (bool) {
+        require(block.number >= startBlockNum.add(roundBlocks), "MRCHStaking::stake: bad timing for the request");
+
         address staker = msg.sender;
 
         uint rewardAmount = calcReward(staker);
@@ -119,24 +132,18 @@ contract StakingV2 is AccessControl {
         return true;
     }
 
-    function calcReward(address staker) public view returns (uint) {
-        uint reward;
-
-        // @Todo calc reward
+    function calcReward(address user) public view returns (uint) {
+        uint reward = roundRewardAmount.mul(stakes[user].amount).div(total.amount);
 
         return reward;
     }
 
-    function currentRoundNum() public view returns (uint) {
+    function getRoundNum() public view returns (uint) {
         return roundNum(block.number);
     }
 
     function roundNum(uint blockNum) public view returns (uint) {
-        if (blockNum > startBlockNum) {
-            return blockNum.sub(startBlockNum).div(roundBlocks) + 1; // first round num is 1
-        } else {
-            return 0;
-        }
+
     }
 
     function doTransferOut(address token, address to, uint amount) internal {
@@ -149,27 +156,15 @@ contract StakingV2 is AccessControl {
     }
 
     function doTransferIn(address from, address token, uint amount) internal {
+        if (amount == 0) {
+            return;
+        }
+
         IERC20 ERC20Interface = IERC20(token);
         ERC20Interface.safeTransferFrom(from, address(this), amount);
     }
 
     function getTimeStamp() public view virtual returns (uint) {
         return block.timestamp;
-    }
-
-    function add96(uint96 a, uint96 b, string memory errorMessage) internal pure returns (uint96) {
-        uint96 c = a + b;
-        require(c >= a, errorMessage);
-        return c;
-    }
-
-    function sub96(uint96 a, uint96 b, string memory errorMessage) internal pure returns (uint96) {
-        require(b <= a, errorMessage);
-        return a - b;
-    }
-
-    function safe32(uint n, string memory errorMessage) pure internal returns (uint32) {
-        require(n < 2**32, errorMessage);
-        return uint32(n);
     }
 }
