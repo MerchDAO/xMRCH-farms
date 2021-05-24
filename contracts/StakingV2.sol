@@ -16,7 +16,9 @@ contract StakingV2 {
 
     mapping(address => Stake) public stakes;
 
-    address public stakeToken; // Uniswap LP token from pool MRCH|ETH
+    address public admin;
+
+    address public stakeToken; // Uniswap LP token from pool MRCH|ETH:
     address public rewardToken; // MRCH token
 
     uint public stakingStart;
@@ -37,6 +39,8 @@ contract StakingV2 {
         uint roundTime_,
         uint roundRewardAmount_
     ) {
+        admin = msg.sender;
+
         require(stakeToken_ != address(0), "MRCHStaking: stake token address is 0");
         stakeToken = stakeToken_;
 
@@ -58,6 +62,14 @@ contract StakingV2 {
         require(rewardAmount > 0, "MRCHStaking: reward must be positive");
 
         doTransferIn(msg.sender, rewardToken, rewardAmount);
+
+        return true;
+    }
+
+    function removeReward(address token, uint amount) public returns (bool) {
+        require(msg.sender == admin, "MRCHStaking: Only admin can remove tokens from reward");
+
+        doTransferOut(token, admin, amount);
 
         return true;
     }
@@ -106,7 +118,7 @@ contract StakingV2 {
     }
 
     function claimReward() public returns (bool) {
-        require(getTimeStamp() > stakingEnd, "PieStaking: bad timing for the request");
+        require(getTimeStamp() > stakingEnd, "MRCHStaking: bad timing for the request");
 
         address staker = msg.sender;
 
