@@ -1,128 +1,122 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.7.6;
 
-import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
-import "openzeppelin-solidity/contracts/math/SafeMath.sol";
-import "openzeppelin-solidity/contracts/token/ERC20/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/math/SafeMath.sol";
+import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 
-contract StakingV2 {
+contract StakingV3 is Ownable {
     using SafeMath for uint;
     using SafeERC20 for IERC20;
 
     struct Stake {
         uint amount;
+        uint startTime;
         uint rewardOut;
     }
 
-    mapping(address => Stake) public stakes;
+    mapping(uint => mapping(address => Stake)) public stakes;
 
-    address public admin;
+    // Info of each pool.
+    struct Pool {
+        uint rewardAmount; // Pool reward tokens limit
+        uint stakeStartTime;
+        uint stakeEndTime;
+        uint stakedTotal;
+        uint roundTime;
+    }
 
-    address public stakeToken; // Uniswap LP token from pool MRCH|ETH:
+    Pool[] public pools;
+
+    address public stakeToken; // Uniswap LP token from pool MRCH/USDT
     address public rewardToken; // MRCH token
 
-    uint public stakingStart;
-    uint public stakingEnd;
-    uint public roundTime; // every round time in blocks, new reward amount
-    uint public roundRewardAmount; // reward for each round
-
-    uint public stakedTotal;
-
-    event Staked(address staker, uint amount);
-    event RewardOut(address staker, address token, uint amount);
+    event Staked(uint pid, address staker, uint amount);
+    event RewardOut(uint pid, address staker, address token, uint amount);
 
     constructor(
         address stakeToken_,
-        address rewardToken_,
-        uint stakingStart_,
-        uint stakingEnd_,
-        uint roundTime_,
-        uint roundRewardAmount_
+        address rewardToken_
     ) {
-        admin = msg.sender;
-
-        require(stakeToken_ != address(0), "MRCHStaking: stake token address is 0");
+        require(stakeToken_ != address(0), "MRCHStaking: stake token address is 0x0");
         stakeToken = stakeToken_;
 
-        require(rewardToken_ != address(0), "MRCHStaking: reward token address is 0");
+        require(rewardToken_ != address(0), "MRCHStaking: reward token address is 0x0");
         rewardToken = rewardToken_;
-
-        stakingStart = stakingStart_;
-
-        require(stakingEnd_ > stakingStart, "MRCHStaking: staking end must be after staking start");
-        stakingEnd = stakingEnd_;
-
-        roundTime = roundTime_;
-
-        require(roundRewardAmount > 0, "MRCHStaking: reward amount address is 0");
-        roundRewardAmount = roundRewardAmount_;
     }
 
-    function addReward(uint rewardAmount) public returns (bool) {
-        require(rewardAmount > 0, "MRCHStaking: reward must be positive");
+    function addPool(uint rewardAmount_, uint startTime_, uint endTime_, uint roundTime_) public onlyOwner {
+        require(getTimeStamp() <= startTime_, "MRCHStaking: bad timing for the request");
+        require(startTime_ < endTime_, "MRCHStaking: endTime > startTime");
 
-        doTransferIn(msg.sender, rewardToken, rewardAmount);
+        doTransferIn(msg.sender, rewardToken, rewardAmount_);
 
-        return true;
+        pools.push(
+            Pool({
+            rewardAmount: rewardAmount_,
+            stakeStartTime: startTime_,
+            stakeEndTime: endTime_,
+            roundTime: roundTime_,
+            stakedTotal: 0
+            })
+        );
     }
 
-    function removeReward(address token, uint amount) public returns (bool) {
-        require(msg.sender == admin, "MRCHStaking: Only admin can remove tokens from reward");
-
-        doTransferOut(token, admin, amount);
-
-        return true;
-    }
-
-    function stake(uint amount) public returns (bool) {
-        require(amount > 0, "MRCHStaking: must be positive");
-        require(getTimeStamp() >= stakingStart, "MRCHStaking: bad timing for the request");
-        require(getTimeStamp() < stakingEnd, "MRCHStaking: bad timing for the request");
+    function stake(uint pid, uint amount) public returns (bool) {
+        require(amount > 0, "MRCHStaking: amount must be positive");
+        require(getTimeStamp() >= pools[pid].stakeStartTime, "MRCHStaking: bad timing for the request");
+        require(getTimeStamp() < pools[pid].stakeEndTime, "MRCHStaking: bad timing for the request");
 
         address staker = msg.sender;
 
         doTransferIn(staker, stakeToken, amount);
 
-        emit Staked(staker, amount);
-
         // Transfer is completed
-        stakedTotal = stakedTotal.add(amount);
-        stakes[staker].amount = stakes[staker].amount.add(amount);
+        pools[pid].stakedTotal = pools[pid].stakedTotal.add(amount);
+
+        stakes[pid][staker].amount = stakes[pid][staker].amount.add(amount);
+        stakes[pid][staker].startTime = getTimeStamp();
+
+        emit Staked(pid, staker, amount);
 
         return true;
     }
 
-    function withdraw() public returns (bool) {
-        require(claimReward(), "MRCHStaking: claim error");
-        uint amount = stakes[msg.sender].amount;
+    function withdraw(uint pid) public returns (bool) {
+        require(claim(pid), "MRCHStaking: claim error");
 
-        return withdrawWithoutReward(amount);
+        uint amount = stakes[pid][msg.sender].amount;
+
+        return withdrawWithoutReward(pid, amount);
     }
 
-    function withdrawWithoutReward(uint amount) public returns (bool) {
-        return withdrawInternal(msg.sender, amount);
+    function withdrawWithoutReward(uint pid, uint amount) public returns (bool) {
+        return withdrawInternal(pid, msg.sender, amount);
     }
 
-    function withdrawInternal(address staker, uint amount) internal returns (bool) {
-        uint withdrawStart = stakingEnd.add(roundTime);
+    function withdrawInternal(uint pid, address staker, uint amount) internal returns (bool) {
+        require(amount > 0, "MRCHStaking: amount must be positive");
+        require(amount <= stakes[pid][msg.sender].amount, "MRCHStaking: not enough balance");
 
-        require(getTimeStamp() >= withdrawStart, "MRCHStaking: bad timing for the request");
-        require(amount > 0, "MRCHStaking: must be positive");
-        require(amount <= stakes[msg.sender].amount, "MRCHStaking: not enough balance");
+        uint withdrawTime = pools[pid].stakeEndTime.add(pools[pid].roundTime);
+        require(getTimeStamp() > withdrawTime, "MRCHStaking: bad timing for the request");
 
-        stakes[staker].amount = stakes[staker].amount.sub(amount);
+        stakes[pid][staker].amount = stakes[pid][staker].amount.sub(amount);
 
         doTransferOut(stakeToken, staker, amount);
 
         return true;
     }
 
-    function claimReward() public returns (bool) {
-        require(getTimeStamp() > stakingEnd, "MRCHStaking: bad timing for the request");
+    function claim(uint pid) public returns (bool) {
+        uint claimTime = pools[pid].stakeEndTime.add(pools[pid].roundTime);
+
+        require(getTimeStamp() > claimTime, "MRCHStaking: bad timing for the request");
 
         address staker = msg.sender;
 
-        uint rewardAmount = currentReward(staker);
+        uint rewardAmount = currentReward(pid, staker);
 
         if (rewardAmount == 0) {
             return true;
@@ -130,45 +124,30 @@ contract StakingV2 {
 
         doTransferOut(rewardToken, staker, rewardAmount);
 
-        stakes[staker].rewardOut = stakes[staker].rewardOut.add(rewardAmount);
+        stakes[pid][staker].rewardOut = stakes[pid][staker].rewardOut.add(rewardAmount);
 
-        emit RewardOut(staker, rewardToken, rewardAmount);
+        emit RewardOut(pid, staker, rewardToken, rewardAmount);
 
         return true;
     }
 
-    function currentReward(address staker) public view returns (uint) {
-        uint totalStakerReward = calcTotalReward(staker);
-        uint timeStamp = getTimeStamp();
+    function currentReward(uint pid, address staker) public view returns (uint) {
+        uint totalRewardAmount = pools[pid].rewardAmount;
+        uint stakedTotal = pools[pid].stakedTotal;
 
-        if (totalStakerReward == 0 || timeStamp < stakingEnd) {
-            return 0;
-        }
+        uint amount = stakes[pid][staker].amount;
+        uint rewardOut = stakes[pid][staker].rewardOut;
 
-        uint allTime = roundTime;
-        uint withdrawStart = stakingEnd.add(roundTime);
+        uint rewardAmount = totalRewardAmount.mul(amount).div(stakedTotal);
 
-        uint time = timeStamp < withdrawStart ? timeStamp.sub(stakingEnd) : allTime;
-
-        uint stakerRewardToTimestamp = totalStakerReward.mul(time).div(allTime);
-        uint rewardOut = stakes[staker].rewardOut;
-
-        return stakerRewardToTimestamp.sub(rewardOut);
-    }
-
-    function calcTotalReward(address staker) public view returns (uint) {
-        uint amount = stakes[staker].amount;
-
-        return calcReward(amount);
-    }
-
-    function calcReward(uint amount) public view returns (uint) {
-        uint rewardAmount = roundRewardAmount.mul(amount).div(stakedTotal);
-
-        return rewardAmount;
+        return rewardAmount.sub(rewardOut);
     }
 
     function doTransferOut(address token, address to, uint amount) internal {
+        if (amount == 0) {
+            return;
+        }
+
         IERC20 ERC20Interface = IERC20(token);
         ERC20Interface.safeTransfer(to, amount);
     }
@@ -176,6 +155,10 @@ contract StakingV2 {
     function doTransferIn(address from, address token, uint amount) internal {
         IERC20 ERC20Interface = IERC20(token);
         ERC20Interface.safeTransferFrom(from, address(this), amount);
+    }
+
+    function transferTokens(address token, address to, uint amount) public onlyOwner {
+        doTransferOut(token, to, amount);
     }
 
     function getTimeStamp() public view virtual returns (uint) {
