@@ -25,6 +25,8 @@ contract StakingV3 is Ownable {
         uint stakeEndTime;
         uint stakedTotal;
         uint roundTime;
+        uint freezeTime;
+        uint percent;
     }
 
     Pool[] public pools;
@@ -46,7 +48,7 @@ contract StakingV3 is Ownable {
         rewardToken = rewardToken_;
     }
 
-    function addPool(uint rewardAmount_, uint startTime_, uint endTime_, uint roundTime_) public onlyOwner {
+    function addPool(uint rewardAmount_, uint startTime_, uint endTime_, uint roundTime_, uint freezeTime_, uint percent_) public onlyOwner {
         require(getTimeStamp() <= startTime_, "MRCHStaking: bad timing for the request");
         require(startTime_ < endTime_, "MRCHStaking: endTime > startTime");
 
@@ -54,11 +56,13 @@ contract StakingV3 is Ownable {
 
         pools.push(
             Pool({
-            rewardAmount: rewardAmount_,
-            stakeStartTime: startTime_,
-            stakeEndTime: endTime_,
-            roundTime: roundTime_,
-            stakedTotal: 0
+                rewardAmount: rewardAmount_,
+                stakeStartTime: startTime_,
+                stakeEndTime: endTime_,
+                roundTime: roundTime_,
+                freezeTime: freezeTime_,
+                percent: percent_, // scaled by 1e18, for example 5% = 5e18, 0.01% = 1e16
+                stakedTotal: 0
             })
         );
     }
@@ -99,10 +103,16 @@ contract StakingV3 is Ownable {
         require(amount > 0, "MRCHStaking: amount must be positive");
         require(amount <= stakes[pid][msg.sender].amount, "MRCHStaking: not enough balance");
 
-        uint withdrawTime = pools[pid].stakeEndTime.add(pools[pid].roundTime);
+        uint withdrawTime = pools[pid].stakeEndTime.add(pools[pid].freezeTime);
         require(getTimeStamp() > withdrawTime, "MRCHStaking: bad timing for the request");
 
         stakes[pid][staker].amount = stakes[pid][staker].amount.sub(amount);
+
+        uint endTime = pools[pid].stakeEndTime.add(pools[pid].roundTime);
+
+        if (getTimeStamp() < endTime) {
+            amount = amount.mul(pools[pid].percent).div(100).div(1e18);
+        }
 
         doTransferOut(stakeToken, staker, amount);
 
