@@ -21,10 +21,9 @@ contract StakingV3 is Ownable {
     // Info of each pool.
     struct Pool {
         uint rewardAmount; // Pool reward tokens limit
-        uint stakeStartTime;
-        uint stakeEndTime;
+        uint startTime;
+        uint endTime;
         uint stakedTotal;
-        uint roundTime;
         uint freezeTime;
         uint percent;
     }
@@ -48,7 +47,7 @@ contract StakingV3 is Ownable {
         rewardToken = rewardToken_;
     }
 
-    function addPool(uint rewardAmount_, uint startTime_, uint endTime_, uint roundTime_, uint freezeTime_, uint percent_) public onlyOwner {
+    function addPool(uint rewardAmount_, uint startTime_, uint endTime_, uint freezeTime_, uint percent_) public onlyOwner {
         require(getTimeStamp() <= startTime_, "MRCHStaking: bad timing for the request");
         require(startTime_ < endTime_, "MRCHStaking: endTime > startTime");
 
@@ -57,20 +56,19 @@ contract StakingV3 is Ownable {
         pools.push(
             Pool({
                 rewardAmount: rewardAmount_,
-                stakeStartTime: startTime_,
-                stakeEndTime: endTime_,
-                roundTime: roundTime_,
+                startTime: startTime_,
+                endTime: endTime_,
+                stakedTotal: 0,
                 freezeTime: freezeTime_,
-                percent: percent_, // scaled by 1e18, for example 5% = 5e18, 0.01% = 1e16
-                stakedTotal: 0
+                percent: percent_ // scaled by 1e18, for example 5% = 5e18, 0.01% = 1e16
             })
         );
     }
 
     function stake(uint pid, uint amount) public returns (bool) {
         require(amount > 0, "MRCHStaking: amount must be positive");
-        require(getTimeStamp() >= pools[pid].stakeStartTime, "MRCHStaking: bad timing for the request");
-        require(getTimeStamp() < pools[pid].stakeEndTime, "MRCHStaking: bad timing for the request");
+        require(getTimeStamp() >= pools[pid].startTime, "MRCHStaking: bad timing for the request");
+        require(getTimeStamp() < pools[pid].endTime, "MRCHStaking: bad timing for the request");
 
         address staker = msg.sender;
 
@@ -80,15 +78,16 @@ contract StakingV3 is Ownable {
         pools[pid].stakedTotal = pools[pid].stakedTotal.add(amount);
 
         stakes[pid][staker].amount = stakes[pid][staker].amount.add(amount);
-        stakes[pid][staker].startTime = getTimeStamp();
+        stakes[pid][staker].startTime = getTimeStamp(); // @Todo check time
 
+        // @Todo reward out check and get claim
         emit Staked(pid, staker, amount);
 
         return true;
     }
 
     function withdraw(uint pid) public returns (bool) {
-        require(claim(pid), "MRCHStaking: claim error");
+        require(claim(pid), "MRCHStaking::withdraw: claim error");
 
         uint amount = stakes[pid][msg.sender].amount;
 
@@ -100,17 +99,15 @@ contract StakingV3 is Ownable {
     }
 
     function withdrawInternal(uint pid, address staker, uint amount) internal returns (bool) {
-        require(amount > 0, "MRCHStaking: amount must be positive");
+        require(amount > 0, "MRCHStaking::withdrawInternal: amount must be positive");
         require(amount <= stakes[pid][msg.sender].amount, "MRCHStaking: not enough balance");
 
-        uint withdrawTime = pools[pid].stakeEndTime.add(pools[pid].freezeTime);
-        require(getTimeStamp() > withdrawTime, "MRCHStaking: bad timing for the request");
 
         stakes[pid][staker].amount = stakes[pid][staker].amount.sub(amount);
 
-        uint endTime = pools[pid].stakeEndTime.add(pools[pid].roundTime);
+        uint freezeTime = pools[pid].startTime.add(pools[pid].freezeTime);
 
-        if (getTimeStamp() < endTime) {
+        if (getTimeStamp() < freezeTime) {
             amount = amount.mul(pools[pid].percent).div(100).div(1e18);
         }
 
@@ -120,10 +117,6 @@ contract StakingV3 is Ownable {
     }
 
     function claim(uint pid) public returns (bool) {
-        uint claimTime = pools[pid].stakeEndTime.add(pools[pid].roundTime);
-
-        require(getTimeStamp() > claimTime, "MRCHStaking: bad timing for the request");
-
         address staker = msg.sender;
 
         uint rewardAmount = currentReward(pid, staker);
@@ -148,7 +141,10 @@ contract StakingV3 is Ownable {
         uint amount = stakes[pid][staker].amount;
         uint rewardOut = stakes[pid][staker].rewardOut;
 
-        uint rewardAmount = totalRewardAmount.mul(amount).div(stakedTotal);
+        uint totalDuration = pools[pid].startTime.add(pools[pid].endTime);
+        uint stakeTime = getTimeStamp().sub(stakes[pid][staker].startTime);
+
+        uint rewardAmount = totalRewardAmount.mul(amount).mul(stakeTime).div(stakedTotal).div(totalDuration);
 
         return rewardAmount.sub(rewardOut);
     }
