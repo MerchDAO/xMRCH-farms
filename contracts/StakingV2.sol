@@ -78,9 +78,8 @@ contract StakingV3 is Ownable {
         pools[pid].stakedTotal = pools[pid].stakedTotal.add(amount);
 
         stakes[pid][staker].amount = stakes[pid][staker].amount.add(amount);
-        stakes[pid][staker].startTime = getTimeStamp(); // @Todo check time
+        stakes[pid][staker].startTime = getTimeStamp();
 
-        // @Todo reward out check and get claim
         emit Staked(pid, staker, amount);
 
         return true;
@@ -102,10 +101,9 @@ contract StakingV3 is Ownable {
         require(amount > 0, "MRCHStaking::withdrawInternal: amount must be positive");
         require(amount <= stakes[pid][msg.sender].amount, "MRCHStaking: not enough balance");
 
-
         stakes[pid][staker].amount = stakes[pid][staker].amount.sub(amount);
 
-        uint freezeTime = pools[pid].startTime.add(pools[pid].freezeTime);
+        uint freezeTime = stakes[pid][staker].startTime.add(pools[pid].freezeTime);
 
         if (getTimeStamp() < freezeTime) {
             amount = amount.mul(pools[pid].percent).div(100).div(1e18);
@@ -119,7 +117,7 @@ contract StakingV3 is Ownable {
     function claim(uint pid) public returns (bool) {
         address staker = msg.sender;
 
-        uint rewardAmount = currentReward(pid, staker);
+        uint rewardAmount = totalReward(pid, staker);
 
         if (rewardAmount == 0) {
             return true;
@@ -134,7 +132,7 @@ contract StakingV3 is Ownable {
         return true;
     }
 
-    function currentReward(uint pid, address staker) public view returns (uint) {
+    function totalReward(uint pid, address staker) public view returns (uint) {
         uint totalRewardAmount = pools[pid].rewardAmount;
         uint stakedTotal = pools[pid].stakedTotal;
 
