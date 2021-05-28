@@ -5,7 +5,7 @@ const { ethers } = require("hardhat");
 const { providers } = require("web3");
 
 
-describe("MRCH Staking test", async () => {
+describe("MRCH StakingV1 test", async () => {
     let tokenmrch;
     let tokenxmrch;
     let staking;
