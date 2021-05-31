@@ -9,14 +9,10 @@ describe("MRCH StakingV2 test", async () => {
     let tokenmrch;
     let tokenlp;
     let staking;
-    let startTime = Math.floor(Date.now() / 1000) + 15;
-    console.log("data", Math.floor(Date.now() / 1000));
-    console.log("startTime", startTime);
-    let endTime = startTime + 1000;
-    console.log("endTime", endTime);
+    let startTime;
+    let endTime;
     let freezeTime = 100;
     let percent = 5;
-    console.log("freezeTime", freezeTime);
 
     it("STEP 1. Creating MRCH token contract", async function () {
         const TokenMRCH = await hre.ethers.getContractFactory("TokenMRCH");
@@ -55,6 +51,15 @@ describe("MRCH StakingV2 test", async () => {
     it("STEP 5. Add pool", async function () {
         const [...addr] = await ethers.getSigners();
 
+        let timeStamp = await staking.getTimeStamp();
+        console.log('TimeStamp: Add pool', timeStamp.toString());
+
+        startTime = +timeStamp + 3;
+        console.log("startTime", startTime);
+
+        endTime = +startTime + 1000;
+        console.log("endTime", endTime);
+
         let balance = await tokenmrch.balanceOf(addr[0].address);
         console.log('balance', balance / 1e18);
 
@@ -63,15 +68,38 @@ describe("MRCH StakingV2 test", async () => {
         let allowance = await tokenmrch.allowance(addr[0].address, staking.address);
         console.log('allowance', allowance / 1e18);
 
-        let check = await staking.getTimeStamp();
-        console.log('check2', check.toString());
-
         staking.addPool(ethers.utils.parseEther("1000.0"), startTime, endTime, freezeTime, percent);
     });
 
     it("STEP 6. Staking", async function () {
         const [...addr] = await ethers.getSigners();
 
+        await tokenlp.connect(addr[1]).approve(staking.address, ethers.utils.parseEther("5.0"));
+
+        let allowance = await tokenlp.allowance(addr[1].address, staking.address);
+        console.log('allowance', allowance / 1e18);
+
+        await tokenlp.connect(addr[2]).approve(staking.address, ethers.utils.parseEther("5.0"));
+
+        allowance = await tokenlp.allowance(addr[2].address, staking.address);
+        console.log('allowance', allowance / 1e18);
+
+        await tokenlp.connect(addr[3]).approve(staking.address, ethers.utils.parseEther("5.0"));
+
+        allowance = await tokenlp.allowance(addr[3].address, staking.address);
+        console.log('allowance', allowance / 1e18);
+
+        let timeStamp = await staking.getTimeStamp();
+        console.log('TimeStamp: Staking', timeStamp.toString());
+
+        await staking.connect(addr[1]).stake(0, ethers.utils.parseEther("5.0"));
+        expect(await tokenlp.balanceOf(staking.address)).to.equal(ethers.utils.parseEther("5.0"));
+
+        await staking.connect(addr[2]).stake(0, ethers.utils.parseEther("5.0"));
+        expect(await tokenlp.balanceOf(staking.address)).to.equal(ethers.utils.parseEther("10.0"));
+
+        await staking.connect(addr[3]).stake(0, ethers.utils.parseEther("5.0"));
+        expect(await tokenlp.balanceOf(staking.address)).to.equal(ethers.utils.parseEther("15.0"));
     });
 
     it("STEP 7. Unstaking", async function () {
