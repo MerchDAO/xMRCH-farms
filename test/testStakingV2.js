@@ -91,9 +91,9 @@ describe("MRCH StakingV2 test", async () => {
         let timeStamp = await staking.getTimeStamp();
         console.log('TimeStamp: Staking', timeStamp.toString());
 
-        staking.connect(addr[1]).stake(0, ethers.utils.parseEther("5.0"));
-        staking.connect(addr[2]).stake(0, ethers.utils.parseEther("5.0"));
-        staking.connect(addr[3]).stake(0, ethers.utils.parseEther("5.0"));
+        await staking.connect(addr[1]).stake(0, ethers.utils.parseEther("5.0"));
+        await staking.connect(addr[2]).stake(0, ethers.utils.parseEther("5.0"));
+        await staking.connect(addr[3]).stake(0, ethers.utils.parseEther("5.0"));
 
         expect(await tokenlp.balanceOf(staking.address)).to.equal(ethers.utils.parseEther("15.0"));
     });
