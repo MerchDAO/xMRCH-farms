@@ -4,7 +4,6 @@ const BigNumber = require("bignumber.js");
 const { ethers } = require("hardhat");
 const { providers } = require("web3");
 
-
 describe("MRCH StakingV2 test", async () => {
     let tokenmrch;
     let tokenlp;
@@ -92,20 +91,36 @@ describe("MRCH StakingV2 test", async () => {
         let timeStamp = await staking.getTimeStamp();
         console.log('TimeStamp: Staking', timeStamp.toString());
 
-        await staking.connect(addr[1]).stake(0, ethers.utils.parseEther("5.0"));
-        expect(await tokenlp.balanceOf(staking.address)).to.equal(ethers.utils.parseEther("5.0"));
+        staking.connect(addr[1]).stake(0, ethers.utils.parseEther("5.0"));
+        staking.connect(addr[2]).stake(0, ethers.utils.parseEther("5.0"));
+        staking.connect(addr[3]).stake(0, ethers.utils.parseEther("5.0"));
 
-        await staking.connect(addr[2]).stake(0, ethers.utils.parseEther("5.0"));
-        expect(await tokenlp.balanceOf(staking.address)).to.equal(ethers.utils.parseEther("10.0"));
-
-        await staking.connect(addr[3]).stake(0, ethers.utils.parseEther("5.0"));
         expect(await tokenlp.balanceOf(staking.address)).to.equal(ethers.utils.parseEther("15.0"));
     });
 
     it("STEP 7. Unstaking", async function () {
         const [...addr] = await ethers.getSigners();
 
+        expect(await tokenmrch.balanceOf(addr[1].address)).to.equal(ethers.utils.parseEther("0.0"));
+        expect(await tokenmrch.balanceOf(addr[2].address)).to.equal(ethers.utils.parseEther("0.0"));
+        expect(await tokenmrch.balanceOf(addr[3].address)).to.equal(ethers.utils.parseEther("0.0"));
+
+        ethers.provider.send("evm_setNextBlockTimestamp", [endTime + 1]);
+        ethers.provider.send("evm_mine");
+
+        await staking.connect(addr[1]).withdraw(0);
+        expect(await tokenlp.balanceOf(addr[1].address)).to.equal(ethers.utils.parseEther("100.0"));
+
+        await staking.connect(addr[2]).withdraw(0);
+        expect(await tokenlp.balanceOf(addr[2].address)).to.equal(ethers.utils.parseEther("100.0"));
+
+        await staking.connect(addr[3]).withdraw(0);
+        expect(await tokenlp.balanceOf(addr[3].address)).to.equal(ethers.utils.parseEther("100.0"));
+
+        expect(await tokenlp.balanceOf(staking.address)).to.equal(ethers.utils.parseEther("0"));
+
+        expect(await tokenmrch.balanceOf(addr[1].address)).to.equal('333668005354752342704');
+        expect(await tokenmrch.balanceOf(addr[2].address)).to.equal('333333333333333333333');
+        expect(await tokenmrch.balanceOf(addr[3].address)).to.equal('332998661311914323962');
     });
-
-
 });
