@@ -12,7 +12,7 @@ contract StakingV2 is Ownable {
 
     struct Stake {
         uint amount;
-        uint startTime;
+        uint stakeTime;
         uint fraction;
         uint rewardOut;
     }
@@ -70,7 +70,6 @@ contract StakingV2 is Ownable {
         require(amount > 0, "MRCHStaking::stake: amount must be positive");
 
         uint timeStamp = getTimeStamp();
-        require(timeStamp >= pools[pid].startTime, "MRCHStaking::stake: bad timing for the request");
         require(timeStamp < pools[pid].endTime, "MRCHStaking::stake: bad timing for the request");
 
         address staker = msg.sender;
@@ -81,7 +80,13 @@ contract StakingV2 is Ownable {
         uint part = (pools[pid].endTime.sub(timeStamp)).mul(amount);
 
         stakes[pid][staker].amount = stakes[pid][staker].amount.add(amount);
-        stakes[pid][staker].startTime = getTimeStamp();
+
+        if (timeStamp < pools[pid].startTime) {
+            stakes[pid][staker].stakeTime = pools[pid].startTime;
+        } else {
+            stakes[pid][staker].stakeTime = timeStamp;
+        }
+
         stakes[pid][staker].fraction = stakes[pid][staker].fraction.add(part);
 
         pools[pid].total = pools[pid].total.add(part);
@@ -109,7 +114,7 @@ contract StakingV2 is Ownable {
 
         stakes[pid][staker].amount = stakes[pid][staker].amount.sub(amount);
 
-        uint freezeTime = stakes[pid][staker].startTime.add(pools[pid].freezeTime);
+        uint freezeTime = stakes[pid][staker].stakeTime.add(pools[pid].freezeTime);
 
         if (getTimeStamp() < freezeTime) {
             amount = amount.mul(pools[pid].percent).div(100).div(1e18);
