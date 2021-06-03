@@ -34,6 +34,9 @@ contract StakingV2 is Ownable {
     address public stakeToken; // Uniswap LP token from pool MRCH/USDT
     address public rewardToken; // MRCH token
 
+    event AddPool(uint pid, uint reward, uint startTime, uint endTime, uint freezeTime, uint percent);
+    event PoolTotal(uint pid, uint oldTotal, uint newTotal);
+    event StakerFraction(uint pid, address staker, uint oldFraction, uint newFraction);
     event Staked(uint pid, address staker, uint amount);
     event RewardOut(uint pid, address staker, address token, uint amount);
 
@@ -64,6 +67,8 @@ contract StakingV2 is Ownable {
                 percent: percent_ // scaled by 1e18, for example 5% = 5e18, 0.01% = 1e16
             })
         );
+
+        emit AddPool(pools.length - 1, rewardAmount_, startTime_, endTime_, freezeTime_, percent_);
     }
 
     function stake(uint pid, uint amount) public returns (bool) {
@@ -77,21 +82,27 @@ contract StakingV2 is Ownable {
         doTransferIn(staker, stakeToken, amount);
 
         // Transfer is completed
-        uint part = (pools[pid].endTime.sub(timeStamp)).mul(amount);
-
         stakes[pid][staker].amount = stakes[pid][staker].amount.add(amount);
+
+        uint addition;
 
         if (timeStamp < pools[pid].startTime) {
             stakes[pid][staker].stakeTime = pools[pid].startTime;
+            addition = (pools[pid].endTime.sub(pools[pid].startTime)).mul(amount);
         } else {
             stakes[pid][staker].stakeTime = timeStamp;
+            addition = (pools[pid].endTime.sub(timeStamp)).mul(amount);
         }
 
-        stakes[pid][staker].fraction = stakes[pid][staker].fraction.add(part);
+        uint oldFraction = stakes[pid][staker].fraction;
+        stakes[pid][staker].fraction = stakes[pid][staker].fraction.add(addition);
 
-        pools[pid].total = pools[pid].total.add(part);
+        uint oldTotal = pools[pid].total;
+        pools[pid].total = pools[pid].total.add(addition);
 
         emit Staked(pid, staker, amount);
+        emit StakerFraction(pid, staker, oldFraction, stakes[pid][staker].fraction);
+        emit PoolTotal(pid, oldTotal, pools[pid].total);
 
         return true;
     }
@@ -130,7 +141,7 @@ contract StakingV2 is Ownable {
 
         address staker = msg.sender;
 
-        uint rewardAmount = totalReward(pid, staker);
+        uint rewardAmount = currentTotalReward(pid, staker);
 
         if (rewardAmount == 0) {
             return true;
@@ -145,7 +156,7 @@ contract StakingV2 is Ownable {
         return true;
     }
 
-    function totalReward(uint pid, address staker) public view returns (uint) {
+    function currentTotalReward(uint pid, address staker) public view returns (uint) {
         uint totalRewardAmount = pools[pid].rewardAmount;
         uint total = pools[pid].total;
 
