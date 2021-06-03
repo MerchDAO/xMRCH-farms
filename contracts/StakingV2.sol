@@ -128,7 +128,8 @@ contract StakingV2 is Ownable {
         uint freezeTime = stakes[pid][staker].stakeTime.add(pools[pid].freezeTime);
 
         if (getTimeStamp() < freezeTime) {
-            amount = amount.mul(pools[pid].percent).div(100).div(1e18);
+            uint freezeAmount = amount.mul(pools[pid].percent).div(100);
+            amount = amount.sub(freezeAmount);
         }
 
         doTransferOut(stakeToken, staker, amount);
