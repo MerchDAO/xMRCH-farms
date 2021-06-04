@@ -3,13 +3,13 @@ pragma solidity 0.7.6;
 
 import "./tokens/TokenMRCH.sol";
 import "./tokens/TokenXMRCH.sol";
-import "openzeppelin-solidity/contracts/access/AccessControl.sol";
+import "openzeppelin-solidity/contracts/access/Ownable.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/SafeERC20.sol";
 import "openzeppelin-solidity/contracts/utils/ReentrancyGuard.sol";
 
-contract StakingV1 is AccessControl, ReentrancyGuard {
+contract StakingV1 is Ownable, ReentrancyGuard {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
@@ -76,13 +76,6 @@ contract StakingV1 is AccessControl, ReentrancyGuard {
         uint256 _finePercent,
         uint256 _finePrecision
     ) public {
-        // Grant the contract deployer the default admin role: it will be able
-        // to grant and revoke any roles
-        _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _setupRole(ADMIN_ROLE, msg.sender);
-        // Sets `DEFAULT_ADMIN_ROLE` as ``ADMIN_ROLE``'s admin role.
-        _setRoleAdmin(ADMIN_ROLE, DEFAULT_ADMIN_ROLE);
-
         require(_rewardTotal > 0, "Staking: amount of reward must be positive");
         rewardTotal = _rewardTotal;
 
@@ -104,8 +97,7 @@ contract StakingV1 is AccessControl, ReentrancyGuard {
      * @param _IUniswapV2Pair The address of LP MRCH token.
      * @param _TokenXMRCH` The address of XMRCH token.
      */
-    function initialize(address _IUniswapV2Pair, address _TokenXMRCH) external {
-        require(hasRole(ADMIN_ROLE, msg.sender), "Caller is not an admin");
+    function initialize(address _IUniswapV2Pair, address _TokenXMRCH) external onlyOwner {
         require(
             address(stakeToken) == address(0)
             && address(rewardToken) == address(0),
@@ -354,8 +346,14 @@ contract StakingV1 is AccessControl, ReentrancyGuard {
         return reward;
     }
 
-    function transferTokens(address token, address to, uint amount) public {
-        require(hasRole(ADMIN_ROLE, msg.sender), "Caller is not an admin");
+    function transferTokens(address token, address to, uint amount) public onlyOwner {
+        doTransferOut(token, to, amount);
+    }
+
+    function doTransferOut(address token, address to, uint amount) internal {
+        if (amount == 0) {
+            return;
+        }
 
         IERC20 ERC20Interface = IERC20(token);
         ERC20Interface.safeTransfer(to, amount);
