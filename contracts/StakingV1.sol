@@ -13,8 +13,6 @@ contract StakingV1 is Ownable, ReentrancyGuard {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
-    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
-
     struct Stake {
         uint256 amount;
         uint256 rewardAllowed;
