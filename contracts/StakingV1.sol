@@ -245,7 +245,7 @@ contract StakingV1 is AccessControl, ReentrancyGuard {
      * @param _amount The unstake amount
      * @return The result (true or false)
      */
-    function unstake(uint256 _amount) public payable nonReentrant returns (bool) {
+    function unstake(uint256 _amount) public nonReentrant returns (bool) {
         Stake storage staker = stakes[msg.sender];
         require(
             staker.amount >= _amount,
@@ -352,5 +352,12 @@ contract StakingV1 is AccessControl, ReentrancyGuard {
         reward = calcReward(_staker, _epochTPS, _epochRound);
 
         return reward;
+    }
+
+    function transferTokens(address token, address to, uint amount) public {
+        require(hasRole(ADMIN_ROLE, msg.sender), "Caller is not an admin");
+
+        IERC20 ERC20Interface = IERC20(token);
+        ERC20Interface.safeTransfer(to, amount);
     }
 }
