@@ -39,11 +39,9 @@ describe("MRCH StakingV1 test", async () => {
     });
 
     it("STEP 3. Creating XRMCH token contract", async function () {
-        const TokenXMRCH = await hre.ethers.getContractFactory("TokenXMRCH");
-        tokenxmrch = await TokenXMRCH.deploy(
-            process.env.XMRCH_INITIALSUPPLY,
-            process.env.XMRCH_NAME,
-            process.env.XMRCH_SYMBOL
+        const XMRCH = await hre.ethers.getContractFactory("XMRCH");
+        const tokenxmrch = await XMRCH.deploy(
+            process.env.INIT_ADDRESS
         );
 
         staking.initialize(tokenmrch.address, tokenxmrch.address);
@@ -51,7 +49,7 @@ describe("MRCH StakingV1 test", async () => {
 
     it("STEP 4. Minting", async function () {
         const [...addr] = await ethers.getSigners();
-        tokenxmrch.Mint(ethers.utils.parseEther("100000.0"));
+        tokenxmrch.mint(ethers.utils.parseEther("100000.0"));
         tokenxmrch.transfer(staking.address, ethers.utils.parseEther("10000.0"));
     });
 

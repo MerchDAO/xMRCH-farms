@@ -2,7 +2,7 @@
 pragma solidity 0.7.6;
 
 import "./tokens/TokenMRCH.sol";
-import "./tokens/TokenXMRCH.sol";
+import "./tokens/XMRCHToken.sol";
 import "openzeppelin-solidity/contracts/access/Ownable.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
@@ -27,7 +27,7 @@ contract StakingV1 is Ownable, ReentrancyGuard {
     // ERC20 LP MRCH token staking to the contract
     // and XMRCH token earned by stakers as reward.
     ERC20 public stakeToken;
-    TokenXMRCH public rewardToken;
+    XMRCH public rewardToken;
 
     uint256 public tokensPerStake;
     uint256 public producedReward;
@@ -103,7 +103,7 @@ contract StakingV1 is Ownable, ReentrancyGuard {
         );
 
         stakeToken = ERC20(_IUniswapV2Pair);
-        rewardToken = TokenXMRCH(_TokenXMRCH);
+        rewardToken = XMRCH(_TokenXMRCH);
     }
 
     /**
@@ -170,7 +170,7 @@ contract StakingV1 is Ownable, ReentrancyGuard {
      * @dev getDecimals - return decimals for the staking and reward tokens
      */
     function getDecimals() external view returns (uint256, uint256) {
-        return (ERC20(stakeToken).decimals(), ERC20(rewardToken).decimals());
+        return (ERC20(stakeToken).decimals(), ERC20(address(rewardToken)).decimals());
     }
 
     /**
@@ -314,7 +314,7 @@ contract StakingV1 is Ownable, ReentrancyGuard {
         staker.distributed = staker.distributed.add(reward);
         distributed = distributed.add(reward);
 
-        IERC20(rewardToken).safeTransfer(msg.sender, reward);
+        IERC20(address(rewardToken)).safeTransfer(msg.sender, reward);
 
         emit tokensClaimed(reward, block.timestamp, msg.sender);
     }
