@@ -1,3 +1,5 @@
+// npx hardhat run --network rinkeby scripts/deploy_staking.js
+
 const hre = require("hardhat");
 const dotenv = require('dotenv');
 const network = hre.network.name;

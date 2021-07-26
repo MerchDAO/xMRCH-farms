@@ -190,4 +190,8 @@ contract StakingV2 is Ownable {
     function getTimeStamp() public view virtual returns (uint) {
         return block.timestamp;
     }
+
+    function getPoolLength() public view returns(uint) {
+        return pools.length;
+    }
 }
