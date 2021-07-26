@@ -26,7 +26,7 @@ contract StakingV2 is Ownable {
         uint endTime;
         uint total;
         uint freezeTime;
-        uint percent;
+        uint freezePercent;
     }
 
     Pool[] public pools;
@@ -51,7 +51,7 @@ contract StakingV2 is Ownable {
         rewardToken = rewardToken_;
     }
 
-    function addPool(uint rewardAmount_, uint startTime_, uint endTime_, uint freezeTime_, uint percent_) public onlyOwner {
+    function addPool(uint rewardAmount_, uint startTime_, uint endTime_, uint freezeTime_, uint freezePercent_) public onlyOwner {
         require(getTimeStamp() <= startTime_, "MRCHStaking::addPool: bad timing for the request");
         require(startTime_ < endTime_, "MRCHStaking::addPool: endTime > startTime");
 
@@ -64,11 +64,11 @@ contract StakingV2 is Ownable {
                 endTime: endTime_,
                 total: 0,
                 freezeTime: freezeTime_,
-                percent: percent_ // scaled by 1e18, for example 5% = 5e18, 0.01% = 1e16
+                freezePercent: freezePercent_ // scaled by 1e18, for example 5% = 5e18, 0.01% = 1e16
             })
         );
 
-        emit AddPool(pools.length - 1, rewardAmount_, startTime_, endTime_, freezeTime_, percent_);
+        emit AddPool(pools.length - 1, rewardAmount_, startTime_, endTime_, freezeTime_, freezePercent_);
     }
 
     function stake(uint pid, uint amount) public returns (bool) {
@@ -128,7 +128,7 @@ contract StakingV2 is Ownable {
         uint freezeTime = stakes[pid][staker].stakeTime.add(pools[pid].freezeTime);
 
         if (getTimeStamp() < freezeTime) {
-            uint freezeAmount = amount.mul(pools[pid].percent).div(100);
+            uint freezeAmount = amount.mul(pools[pid].freezePercent).div(100);
             amount = amount.sub(freezeAmount);
         }
 
