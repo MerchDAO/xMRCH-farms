@@ -11,7 +11,7 @@ describe("MRCH StakingV2 test", async () => {
     let startTime;
     let endTime;
     let freezeTime = 100;
-    let percent = 5;
+    let freezePercent = 5;
 
     it("STEP 1. Creating MRCH token contract", async function () {
         const TokenMRCH = await hre.ethers.getContractFactory("TokenMRCH");
@@ -67,7 +67,7 @@ describe("MRCH StakingV2 test", async () => {
         let allowance = await tokenmrch.allowance(addr[0].address, staking.address);
         console.log('allowance', allowance / 1e18);
 
-        staking.addPool(ethers.utils.parseEther("1000.0"), startTime, endTime, freezeTime, percent);
+        staking.addPool(ethers.utils.parseEther("1000.0"), startTime, endTime, freezeTime, freezePercent);
     });
 
     it("STEP 6. Staking", async function () {
