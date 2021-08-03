@@ -1,3 +1,6 @@
+// npx hardhat run --network rinkeby scripts/deploy_tokens.js
+// npx hardhat verify --network rinkeby 0xe27785F96C0190840C71D64Aa83b35c90E9A0405 "1000000000000000000000000" "UNI-LP Token" "UNI-LP"
+
 const hre = require("hardhat");
 const dotenv = require('dotenv');
 const network = hre.network.name;
