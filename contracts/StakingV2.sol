@@ -161,6 +161,10 @@ contract StakingV2 is Ownable {
         uint totalRewardAmount = pools[pid].rewardAmount;
         uint total = pools[pid].total;
 
+        if (total == 0) {
+            return 0;
+        }
+
         uint fraction = stakes[pid][staker].fraction;
         uint rewardOut = stakes[pid][staker].rewardOut;
 
