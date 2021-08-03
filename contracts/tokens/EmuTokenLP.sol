@@ -10,7 +10,7 @@ contract EmuTokenLP is ERC20, ERC20Burnable {
         uint256 initialSupply,
         string memory name,
         string memory symbol
-    ) public ERC20(name, symbol) {
+    ) ERC20(name, symbol) {
         _mint(msg.sender, initialSupply);
     }
 

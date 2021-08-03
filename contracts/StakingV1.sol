@@ -73,7 +73,7 @@ contract StakingV1 is Ownable, ReentrancyGuard {
         uint256 _fineTime,
         uint256 _finePercent,
         uint256 _finePrecision
-    ) public {
+    ) {
         require(_rewardTotal > 0, "Staking: amount of reward must be positive");
         rewardTotal = _rewardTotal;
 

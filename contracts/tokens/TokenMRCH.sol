@@ -11,7 +11,7 @@ contract TokenMRCH is ERC20, AccessControl {
         uint256 initialSupply,
         string memory name,
         string memory symbol
-    ) public ERC20(name, symbol) {
+    ) ERC20(name, symbol) {
         // Grant the contract deployer the default admin role: it will be able
         // to grant and revoke any roles
         _setupRole(ADMIN_ROLE, msg.sender);
