@@ -1,18 +1,17 @@
-# merchdao-LP-staking-marketplace
+# xMRCH-farms
 
 # Development
 
 ## Local environment
 
-cp .env.example to .env
-Add keys to .env file.
+1. Copy .env.example to .env
+2. Add keys to .env file.
 
 ```sh
 npx hardhat node
 ```
 
 ## Testing
-
 ```sh
 npx hardhat test
 ```
