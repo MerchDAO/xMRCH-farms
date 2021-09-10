@@ -179,7 +179,7 @@ contract StakingV1 is Ownable, ReentrancyGuard {
      * @return (staked, available, claimed) The staked LP MRCH amount, available claim amount and claimed amount
      */
     function getUserInfoByAddress(address _user) external view returns (uint256, uint256, uint256) {
-        Stake storage staker = stakes[_user];
+        Stake memory staker = stakes[_user];
 
         uint staked_ = staker.amount;
         uint available_ = getClaim(_user);
@@ -205,9 +205,7 @@ contract StakingV1 is Ownable, ReentrancyGuard {
 
         if (stakedTotal != 0) {
             update();
-        } else if (
-            block.timestamp.sub(startTime).div(distributionTime) > epochRound
-        ) {
+        } else if (block.timestamp.sub(startTime).div(distributionTime) > epochRound) {
             newEpoch(tokensPerStake);
         }
 

@@ -1,5 +1,5 @@
 // npx hardhat run --network rinkeby scripts/deploy_staking.js
-// npx hardhat verify --network rinkeby 0xe27785F96C0190840C71D64Aa83b35c90E9A0405 "0x4d3524ec76fBeD794d813dec53fbD6DC9509AfFf" "0x0dD0A829bf99baa3A880191Db5B0e84b0be4fd75"
+// npx hardhat verify --network rinkeby 0x1fDeDe73120b4Ffa32407Ae0670a4478e659B218 "0x4d3524ec76fBeD794d813dec53fbD6DC9509AfFf" "0x0dD0A829bf99baa3A880191Db5B0e84b0be4fd75"
 
 const hre = require("hardhat");
 const dotenv = require('dotenv');
