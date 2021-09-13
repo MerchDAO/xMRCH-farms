@@ -1,63 +1,87 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.7.6;
+pragma solidity 0.8.7;
 
-import "./tokens/TokenMRCH.sol";
-import "./tokens/XMRCHToken.sol";
-import "openzeppelin-solidity/contracts/access/Ownable.sol";
-import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
-import "openzeppelin-solidity/contracts/math/SafeMath.sol";
-import "openzeppelin-solidity/contracts/token/ERC20/SafeERC20.sol";
-import "openzeppelin-solidity/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-newone/access/Ownable.sol";
+import "@openzeppelin/contracts-newone/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts-newone/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts-newone/security/ReentrancyGuard.sol";
 
 contract StakingV3 is Ownable, ReentrancyGuard {
-    using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
     struct Stake {
         uint amount;
+        uint stakeTime;
+        bool status;
     }
 
-    mapping(address => Stake) public stakes;
+    mapping(address => Stake[]) public stakes;
 
     // ERC20 LP MRCH token staking to the contract
     // and XMRCH token earned by stakers as reward.
     address public stakeToken;
     address public rewardToken;
 
+    uint public epochPeriod;
+    uint public epochReward;
+    uint public halvingPeriod;
+
+    uint public feePercent;
+    uint public feeTime;
+
     event tokensStaked();
     event tokensClaimed();
     event tokensUnstaked();
 
     constructor(
-        address _IUniswapV2Pair,
-        address _TokenXMRCH
+        address IUniswapV2Pair_,
+        address TokenXMRCH_,
+        uint epochPeriod_,
+        uint epochReward_,
+        uint halvingPeriod_,
+        uint feePercent_,
+        uint feeTime_
     ) {
-        stakeToken = _IUniswapV2Pair;
-        rewardToken = _TokenXMRCH;
+        stakeToken = IUniswapV2Pair_;
+        rewardToken = TokenXMRCH_;
+
+        epochPeriod = epochPeriod_;
+        epochReward = epochReward_;
+        halvingPeriod = halvingPeriod_;
+
+        feePercent = feePercent_;
+        feeTime = feeTime_;
     }
 
     /**
-     * @dev `getUserInfoByAddress` - show information about `_user`
-     * @param _user The user address
-     * @return (staked, available, claimed) The staked LP MRCH amount, available claim amount and claimed amount
+     * @dev `getStakeInfo` - show information about user stake
+     * @param user The user address
+     * @param stakeId The id of user stake
+     * @return (amount, stakeTime, status) The staked LP MRCH amount, available claim amount and claimed amount
      */
-    function getUserInfoByAddress(address _user) external view returns (uint256, uint256, uint256) {
-        Stake memory staker = stakes[_user];
+    function getStakeInfo(address user, uint stakeId) external view returns (uint, uint, bool) {
+        Stake memory userStake = stakes[user][stakeId];
 
-        uint staked_ = staker.amount;
-        uint available_ = 0;
-        uint claimed_ = 0;
+        uint amount = userStake.amount;
+        uint stakeTime = userStake.stakeTime;
+        bool status = userStake.status;
 
-        return (staked_, available_, claimed_);
+        return (amount, stakeTime, status);
     }
 
     /**
      * @dev Stakes the LP MRCH tokens
-     * @param _amount The LP MRCH amount
+     * @param amount The LP MRCH amount
      * @return The result (true or false)
      */
-    function stake(uint256 _amount) external returns (bool) {
-        _amount;
+    function stake(uint amount) external returns (bool) {
+        Stake memory userStake;
+
+        userStake.amount = amount;
+        userStake.stakeTime = block.timestamp;
+        userStake.status = true;
+
+        stakes[msg.sender].push(userStake);
 
         return true;
     }
@@ -67,7 +91,7 @@ contract StakingV3 is Ownable, ReentrancyGuard {
      * @param _amount The unstake amount
      * @return The result (true or false)
      */
-    function unstake(uint256 _amount) public nonReentrant returns (bool) {
+    function unstake(uint _amount) public nonReentrant returns (bool) {
         _amount;
 
         return true;
@@ -78,7 +102,7 @@ contract StakingV3 is Ownable, ReentrancyGuard {
      * @param _staker The staker address
      * @return reward
      */
-    function calcReward(address _staker) private view returns (uint256) {
+    function calcReward(address _staker) private view returns (uint) {
         uint reward;
         _staker;
 
@@ -97,7 +121,7 @@ contract StakingV3 is Ownable, ReentrancyGuard {
      * @param _staker The staker address
      * @return reward
      */
-    function getClaim(address _staker) public view returns (uint256) {
+    function getClaim(address _staker) public view returns (uint) {
         uint reward;
 
         reward = calcReward(_staker);
