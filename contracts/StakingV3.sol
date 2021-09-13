@@ -17,7 +17,7 @@ contract StakingV3 is Ownable, ReentrancyGuard {
 
     mapping(address => Stake[]) public stakes;
 
-    // ERC20 LP MRCH token staking to the contract
+    // MRCH token staking to the contract
     // and XMRCH token earned by stakers as reward.
     address public stakeToken;
     address public rewardToken;
@@ -34,7 +34,7 @@ contract StakingV3 is Ownable, ReentrancyGuard {
     event tokensUnstaked();
 
     constructor(
-        address IUniswapV2Pair_,
+        address TokenMRCH_,
         address TokenXMRCH_,
         uint epochPeriod_,
         uint epochReward_,
@@ -42,7 +42,7 @@ contract StakingV3 is Ownable, ReentrancyGuard {
         uint feePercent_,
         uint feeTime_
     ) {
-        stakeToken = IUniswapV2Pair_;
+        stakeToken = TokenMRCH_;
         rewardToken = TokenXMRCH_;
 
         epochPeriod = epochPeriod_;
@@ -57,7 +57,7 @@ contract StakingV3 is Ownable, ReentrancyGuard {
      * @dev `getStakeInfo` - show information about user stake
      * @param user The user address
      * @param stakeId The id of user stake
-     * @return (amount, stakeTime, status) The staked LP MRCH amount, available claim amount and claimed amount
+     * @return (amount, stakeTime, status) The staked MRCH amount, stake time and stake status
      */
     function getStakeInfo(address user, uint stakeId) external view returns (uint, uint, bool) {
         Stake memory userStake = stakes[user][stakeId];
@@ -70,11 +70,11 @@ contract StakingV3 is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Stakes the LP MRCH tokens
-     * @param amount The LP MRCH amount
+     * @dev Stakes the MRCH tokens
+     * @param amount The MRCH amount
      * @return The result (true or false)
      */
-    function stake(uint amount) external returns (bool) {
+    function stake(uint amount) external nonReentrant returns (bool) {
         Stake memory userStake;
 
         userStake.amountIn = doTransferIn(msg.sender, address(this), amount);
@@ -87,44 +87,47 @@ contract StakingV3 is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Unstakes the staked LP MRCH tokens
-     * @param _amount The unstake amount
+     * @dev Unstakes the staked MRCH tokens
+     * @param amount The unstake amount
      * @return The result (true or false)
      */
-    function unstake(uint _amount) public nonReentrant returns (bool) {
-        _amount;
+    function unstake(uint amount) public nonReentrant returns (bool) {
+        amount;
 
         return true;
     }
 
     /**
-     * @dev Calculates available reward TokenXMRCH tokens
-     * @param _staker The staker address
+     * @dev Calculates available reward xMRCH tokens
+     * @param staker The staker address
+     * @param stakeId The stake id of user stake
      * @return reward
      */
-    function calcReward(address _staker) private view returns (uint) {
+    function calcReward(address staker, uint stakeId) public view returns (uint) {
         uint reward;
-        _staker;
+        staker;
 
         return reward;
     }
 
     /**
-     * @dev Claims reward TokenXMRCH tokens
+     * @dev Claims reward xMRCH tokens
+     * @param stakeId The stake id of user stake
      */
-    function claim() public nonReentrant {
+    function claim(uint stakeId) public nonReentrant {
 
     }
 
     /**
-     * @dev Shows amount of the reward TokenXMRCH
-     * @param _staker The staker address
+     * @dev Shows amount of the reward xMRCH
+     * @param staker The staker address
+     * @param stakeId The stake id of user stake
      * @return reward
      */
-    function getClaim(address _staker) public view returns (uint) {
+    function getClaim(address staker, uint stakeId) public view returns (uint) {
         uint reward;
 
-        reward = calcReward(_staker);
+        reward = calcReward(staker, stakeId);
 
         return reward;
     }
