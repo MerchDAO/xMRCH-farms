@@ -3,11 +3,9 @@ pragma solidity 0.8.7;
 
 import "@openzeppelin/contracts-newone/access/Ownable.sol";
 import "@openzeppelin/contracts-newone/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts-newone/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts-newone/security/ReentrancyGuard.sol";
 
 contract StakingV3 is Ownable, ReentrancyGuard {
-    using SafeERC20 for IERC20;
 
     struct Stake {
         uint amountIn;
@@ -18,7 +16,7 @@ contract StakingV3 is Ownable, ReentrancyGuard {
     mapping(address => Stake[]) public stakes;
 
     // MRCH token staking to the contract
-    // and XMRCH token earned by stakers as reward.
+    // and xMRCH token earned by stakers as reward.
     address public stakeToken;
     address public rewardToken;
 
@@ -34,16 +32,16 @@ contract StakingV3 is Ownable, ReentrancyGuard {
     event tokensUnstaked();
 
     constructor(
-        address TokenMRCH_,
-        address TokenXMRCH_,
+        address MRCH,
+        address xMRCH,
         uint epochPeriod_,
         uint epochReward_,
         uint halvingPeriod_,
         uint feePercent_,
         uint feeTime_
     ) {
-        stakeToken = TokenMRCH_;
-        rewardToken = TokenXMRCH_;
+        stakeToken = MRCH;
+        rewardToken = xMRCH;
 
         epochPeriod = epochPeriod_;
         epochReward = epochReward_;
@@ -88,11 +86,14 @@ contract StakingV3 is Ownable, ReentrancyGuard {
 
     /**
      * @dev Unstakes the staked MRCH tokens
-     * @param amount The unstake amount
+     * @param stakeId The stake id of user stake
      * @return The result (true or false)
      */
-    function unstake(uint amount) public nonReentrant returns (bool) {
-        amount;
+    function unstake(uint stakedId) public nonReentrant returns (bool) {
+        claim(stakedId);
+        //@todo fee
+
+        stakes[msg.sender][stakedId].status = false;
 
         return true;
     }
