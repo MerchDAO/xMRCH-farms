@@ -10,7 +10,7 @@ contract StakingV3 is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     struct Stake {
-        uint amount;
+        uint amountIn;
         uint stakeTime;
         bool status;
     }
@@ -62,7 +62,7 @@ contract StakingV3 is Ownable, ReentrancyGuard {
     function getStakeInfo(address user, uint stakeId) external view returns (uint, uint, bool) {
         Stake memory userStake = stakes[user][stakeId];
 
-        uint amount = userStake.amount;
+        uint amount = userStake.amountIn;
         uint stakeTime = userStake.stakeTime;
         bool status = userStake.status;
 
@@ -77,7 +77,7 @@ contract StakingV3 is Ownable, ReentrancyGuard {
     function stake(uint amount) external returns (bool) {
         Stake memory userStake;
 
-        userStake.amount = amount;
+        userStake.amountIn = doTransferIn(msg.sender, address(this), amount);
         userStake.stakeTime = block.timestamp;
         userStake.status = true;
 
@@ -133,12 +133,49 @@ contract StakingV3 is Ownable, ReentrancyGuard {
         doTransferOut(token, to, amount);
     }
 
-    function doTransferOut(address token, address to, uint amount) internal {
-        if (amount == 0) {
-            return;
-        }
+    function doTransferIn(address from, address token, uint amount) internal returns (uint) {
+        uint balanceBefore = ERC20(token).balanceOf(address(this));
+        ERC20(token).transferFrom(from, address(this), amount);
 
-        IERC20 ERC20Interface = IERC20(token);
-        ERC20Interface.safeTransfer(to, amount);
+        bool success;
+        assembly {
+            switch returndatasize()
+            case 0 {                       // This is a non-standard ERC-20
+                success := not(0)          // set success to true
+            }
+            case 32 {                      // This is a compliant ERC-20
+                returndatacopy(0, 0, 32)
+                success := mload(0)        // Set `success = returndata` of external call
+            }
+            default {                      // This is an excessively non-compliant ERC-20, revert.
+                revert(0, 0)
+            }
+        }
+        require(success, "TOKEN_TRANSFER_IN_FAILED");
+
+        // Calculate the amount that was *actually* transferred
+        uint balanceAfter = ERC20(token).balanceOf(address(this));
+        require(balanceAfter >= balanceBefore, "TOKEN_TRANSFER_IN_OVERFLOW");
+        return balanceAfter - balanceBefore;   // underflow already checked above, just subtract
+    }
+
+    function doTransferOut(address token, address to, uint amount) internal {
+        ERC20(token).transfer(to, amount);
+
+        bool success;
+        assembly {
+            switch returndatasize()
+            case 0 {                      // This is a non-standard ERC-20
+                success := not(0)          // set success to true
+            }
+            case 32 {                     // This is a complaint ERC-20
+                returndatacopy(0, 0, 32)
+                success := mload(0)        // Set `success = returndata` of external call
+            }
+            default {                     // This is an excessively non-compliant ERC-20, revert.
+                revert(0, 0)
+            }
+        }
+        require(success, "TOKEN_TRANSFER_OUT_FAILED");
     }
 }
