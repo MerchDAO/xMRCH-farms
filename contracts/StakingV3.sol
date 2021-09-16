@@ -29,9 +29,9 @@ contract StakingV3 is Ownable, ReentrancyGuard {
     uint public feePercent;
     uint public feeTime;
 
-    event tokensStaked();
-    event tokensClaimed();
-    event tokensUnstaked();
+    event Staked(address user, uint amount, uint timestamp);
+    event Claimed(address user, uint stakeId);
+    event Unstaked(address user, uint stakerId);
 
     constructor(
         address MRCH,
@@ -77,14 +77,19 @@ contract StakingV3 is Ownable, ReentrancyGuard {
     function stake(uint amount) external nonReentrant returns (bool) {
         Stake memory userStake;
 
-        uint amountIn = doTransferIn(msg.sender, address(this), amount);
+        address account = msg.sender;
+        uint amountIn = doTransferIn(account, address(this), amount);
+        uint timestamp = block.timestamp;
+
         userStake.amountIn = amountIn;
-        userStake.stakeTime = block.timestamp;
+        userStake.stakeTime = timestamp;
         userStake.status = true;
 
-        stakes[msg.sender].push(userStake);
+        stakes[account].push(userStake);
 
         totalStakeAmount += amountIn;
+
+        emit Staked(account, amountIn, timestamp);
 
         return true;
     }
@@ -95,15 +100,19 @@ contract StakingV3 is Ownable, ReentrancyGuard {
      * @return The result (true or false)
      */
     function unstake(uint stakeId) public nonReentrant returns (bool) {
+        address account = msg.sender;
+
         claim(stakeId);
         //@todo fee
 
-        uint amountOut = stakes[msg.sender][stakeId].amountIn;
-        stakes[msg.sender][stakeId].status = false;
+        uint amountOut = stakes[account][stakeId].amountIn;
+        stakes[account][stakeId].status = false;
 
         totalStakeAmount -= amountOut;
 
-        doTransferOut(stakeToken, msg.sender, amountOut);
+        doTransferOut(stakeToken, account, amountOut);
+
+        emit Unstaked(account, stakeId);
 
         return true;
     }
