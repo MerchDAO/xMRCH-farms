@@ -15,6 +15,8 @@ contract StakingV3 is Ownable, ReentrancyGuard {
 
     mapping(address => Stake[]) public stakes;
 
+    uint public totalStakeAmount;
+
     // MRCH token staking to the contract
     // and xMRCH token earned by stakers as reward.
     address public stakeToken;
@@ -75,11 +77,14 @@ contract StakingV3 is Ownable, ReentrancyGuard {
     function stake(uint amount) external nonReentrant returns (bool) {
         Stake memory userStake;
 
-        userStake.amountIn = doTransferIn(msg.sender, address(this), amount);
+        uint amountIn = doTransferIn(msg.sender, address(this), amount);
+        userStake.amountIn = amountIn;
         userStake.stakeTime = block.timestamp;
         userStake.status = true;
 
         stakes[msg.sender].push(userStake);
+
+        totalStakeAmount += amountIn;
 
         return true;
     }
@@ -89,11 +94,16 @@ contract StakingV3 is Ownable, ReentrancyGuard {
      * @param stakeId The stake id of user stake
      * @return The result (true or false)
      */
-    function unstake(uint stakedId) public nonReentrant returns (bool) {
-        claim(stakedId);
+    function unstake(uint stakeId) public nonReentrant returns (bool) {
+        claim(stakeId);
         //@todo fee
 
-        stakes[msg.sender][stakedId].status = false;
+        uint amountOut = stakes[msg.sender][stakeId].amountIn;
+        stakes[msg.sender][stakeId].status = false;
+
+        totalStakeAmount -= amountOut;
+
+        doTransferOut(stakeToken, msg.sender, amountOut);
 
         return true;
     }
