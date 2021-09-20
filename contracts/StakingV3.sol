@@ -11,19 +11,25 @@ contract StakingV3 is Ownable, ReentrancyGuard {
         uint amountIn;
         uint stakeTime;
         bool status;
+        uint rewardOut;
     }
 
     mapping(address => Stake[]) public stakes;
 
     uint public totalStakeAmount;
 
+    // halving => epoch => amount
+    mapping(uint => mapping(uint => uint)) public totalAmountEpoch;
+
     // MRCH token staking to the contract
     // and xMRCH token earned by stakers as reward.
     address public stakeToken;
     address public rewardToken;
 
+    uint public startTime;
     uint public epochPeriod;
-    uint public epochReward;
+    uint public stakeTimeToEpoch;
+    uint public startEpochReward;
     uint public halvingPeriod;
 
     uint public feePercent;
@@ -36,8 +42,10 @@ contract StakingV3 is Ownable, ReentrancyGuard {
     constructor(
         address MRCH,
         address xMRCH,
+        uint startTime_,
         uint epochPeriod_,
-        uint epochReward_,
+        uint stakeTimeToEpoch_,
+        uint startEpochReward_,
         uint halvingPeriod_,
         uint feePercent_,
         uint feeTime_
@@ -45,8 +53,12 @@ contract StakingV3 is Ownable, ReentrancyGuard {
         stakeToken = MRCH;
         rewardToken = xMRCH;
 
+        require(startTime > block.timestamp, "StakingV3::constructor: Bad start time");
+
+        startTime = startTime_;
         epochPeriod = epochPeriod_;
-        epochReward = epochReward_;
+        stakeTimeToEpoch = stakeTimeToEpoch_;
+        startEpochReward = startEpochReward_;
         halvingPeriod = halvingPeriod_;
 
         feePercent = feePercent_;
@@ -55,18 +67,19 @@ contract StakingV3 is Ownable, ReentrancyGuard {
 
     /**
      * @dev `getStakeInfo` - show information about user stake
-     * @param user The user address
+     * @param staker The user address
      * @param stakeId The id of user stake
-     * @return (amount, stakeTime, status) The staked MRCH amount, stake time and stake status
+     * @return (amount, stakeTime, status, rewardOut) The staked MRCH amount, stake time, stake status and claimed reward
      */
-    function getStakeInfo(address user, uint stakeId) external view returns (uint, uint, bool) {
-        Stake memory userStake = stakes[user][stakeId];
+    function getStakeInfo(address staker, uint stakeId) public view returns (uint, uint, bool, uint) {
+        Stake memory userStake = stakes[staker][stakeId];
 
         uint amount = userStake.amountIn;
         uint stakeTime = userStake.stakeTime;
         bool status = userStake.status;
+        uint rewardOut = userStake.rewardOut;
 
-        return (amount, stakeTime, status);
+        return (amount, stakeTime, status, rewardOut);
     }
 
     /**
@@ -89,6 +102,11 @@ contract StakingV3 is Ownable, ReentrancyGuard {
 
         totalStakeAmount += amountIn;
 
+        uint epochNum = getCurrentEpoch();
+        uint halvingNum = getCurrentHalving();
+
+        totalAmountEpoch[halvingNum][epochNum] += amountIn;
+
         emit Staked(account, amountIn, timestamp);
 
         return true;
@@ -103,18 +121,32 @@ contract StakingV3 is Ownable, ReentrancyGuard {
         address account = msg.sender;
 
         claim(stakeId);
-        //@todo fee
 
         uint amountOut = stakes[account][stakeId].amountIn;
         stakes[account][stakeId].status = false;
 
         totalStakeAmount -= amountOut;
 
-        doTransferOut(stakeToken, account, amountOut);
+        if (getFee(getCurrentTimestamp())) {
+            uint feeAmount = feePercent * amountOut / 1e18;
+
+            doTransferOut(stakeToken, account, amountOut - feeAmount);
+            doTransferOut(stakeToken, owner(), feeAmount);
+        } else {
+            doTransferOut(stakeToken, account, amountOut);
+        }
 
         emit Unstaked(account, stakeId);
 
         return true;
+    }
+
+    function getFee(uint timestamp) public view returns (bool) {
+        if ((timestamp - startTime) / epochPeriod < feeTime) {
+            return false;
+        } else {
+            return true;
+        }
     }
 
     /**
@@ -124,10 +156,26 @@ contract StakingV3 is Ownable, ReentrancyGuard {
      * @return reward
      */
     function calcReward(address staker, uint stakeId) public view returns (uint) {
-        uint reward;
-        staker;
+        uint totalReward;
+        uint currentEpoch = getCurrentEpoch();
+        uint currentHalving = getCurrentHalving();
 
-        return reward;
+        (uint amount, uint stakeTime, bool status, uint rewardOut) = getStakeInfo(staker, stakeId);
+
+        if (status == false) {
+            return 0;
+        }
+
+        uint startEpochNum = getEpochNum(stakeTime);
+        uint startHalvingNum = getHalvingNum(stakeTime);
+
+        for(uint halvingNum = startHalvingNum; halvingNum < currentHalving; halvingNum++) {
+            for(uint epochNum = startEpochNum; epochNum < currentEpoch; epochNum++) {
+                totalReward += amount * getEpochReward(halvingNum) / totalAmountEpoch[halvingNum][epochNum];
+            }
+        }
+
+        return totalReward - rewardOut;
     }
 
     /**
@@ -135,7 +183,53 @@ contract StakingV3 is Ownable, ReentrancyGuard {
      * @param stakeId The stake id of user stake
      */
     function claim(uint stakeId) public nonReentrant {
+        uint amount = calcReward(msg.sender, stakeId);
 
+        if (amount == 0) {
+            return;
+        }
+
+        stakes[msg.sender][stakeId].rewardOut += amount;
+
+        doTransferOut(rewardToken, msg.sender, amount);
+    }
+
+    function getEpochReward(uint halvingNum) public view returns (uint) {
+        return startEpochReward / (2 ** halvingNum);
+    }
+
+    function getCurrentEpochReward() public view returns (uint) {
+        uint currentHalving = getCurrentHalving();
+
+        return getEpochReward(currentHalving);
+    }
+
+    function getCurrentEpoch() public view returns (uint) {
+        uint currentTimestamp = getCurrentTimestamp();
+
+        return getEpochNum(currentTimestamp);
+    }
+
+    function getEpochNum(uint timestamp) public view returns (uint) {
+        if (timestamp < startTime + epochPeriod) {
+            return 0;
+        } else {
+            return (timestamp - startTime) / epochPeriod;
+        }
+    }
+
+    function getHalvingNum(uint timestamp) public view returns (uint) {
+        if (timestamp < startTime + halvingPeriod) {
+            return 0;
+        } else {
+            return (timestamp - startTime) / halvingPeriod;
+        }
+    }
+
+    function getCurrentHalving() public view returns (uint) {
+        uint currentTimestamp = getCurrentTimestamp();
+
+        return getHalvingNum(currentTimestamp);
     }
 
     /**
@@ -154,6 +248,10 @@ contract StakingV3 is Ownable, ReentrancyGuard {
 
     function transferTokens(address token, address to, uint amount) public onlyOwner {
         doTransferOut(token, to, amount);
+    }
+
+    function getCurrentTimestamp() public view returns (uint) {
+        return block.timestamp;
     }
 
     function doTransferIn(address from, address token, uint amount) internal returns (uint) {
