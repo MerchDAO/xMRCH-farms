@@ -170,8 +170,10 @@ contract StakingV3 is Ownable, ReentrancyGuard {
         uint startHalvingNum = getHalvingNum(stakeTime);
 
         for(uint halvingNum = startHalvingNum; halvingNum < currentHalving; halvingNum++) {
+            uint epochReward = getEpochReward(halvingNum);
+
             for(uint epochNum = startEpochNum; epochNum < currentEpoch; epochNum++) {
-                totalReward += amount * getEpochReward(halvingNum) / totalAmountEpoch[halvingNum][epochNum];
+                totalReward += amount * epochReward / totalAmountEpoch[halvingNum][epochNum];
             }
         }
 
