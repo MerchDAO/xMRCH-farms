@@ -118,9 +118,13 @@ contract StakingV3 is Ownable, ReentrancyGuard {
      * @return The result (true or false)
      */
     function unstake(uint stakeId) public nonReentrant returns (bool) {
-        address account = msg.sender;
-
         claim(stakeId);
+
+        return unstakeWithoutClaim(stakeId);
+    }
+
+    function unstakeWithoutClaim(uint stakeId) public returns (bool) {
+        address account = msg.sender;
 
         uint amountOut = stakes[account][stakeId].amountIn;
         stakes[account][stakeId].status = false;
@@ -177,7 +181,11 @@ contract StakingV3 is Ownable, ReentrancyGuard {
             }
         }
 
-        return totalReward - rewardOut;
+        if (totalReward > rewardOut) {
+            return totalReward - rewardOut;
+        } else {
+            return 0;
+        }
     }
 
     /**
@@ -241,11 +249,7 @@ contract StakingV3 is Ownable, ReentrancyGuard {
      * @return reward
      */
     function getClaim(address staker, uint stakeId) public view returns (uint) {
-        uint reward;
-
-        reward = calcReward(staker, stakeId);
-
-        return reward;
+        return calcReward(staker, stakeId);
     }
 
     function transferTokens(address token, address to, uint amount) public onlyOwner {
